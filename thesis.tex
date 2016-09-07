@@ -79,8 +79,8 @@
 \newcommand{\chineseTitle}{中文題目}
 \newcommand{\englishTitle}{英文題目}
 
-\newcommand{\studentCnName}{王大名}
-\newcommand{\studentEnName}{Da-Min Wang}
+\newcommand{\studentCnName}{葉家郡}
+\newcommand{\studentEnName}{Jia-Jun Yeh}
 \newcommand{\advisorCnName}{吳小松}
 \newcommand{\advisorEnName}{Xiao-Sung Wu}
 
@@ -109,11 +109,23 @@
 \listoffigures
 \listoftables
 
+% 9/30
 \chapter{Introduction} \pagenumbering{arabic} % enabling page numbering
 
-NCTU latex thesis\cite{thesis}.
+在現今的軟體開發中，程式碼數量動輒數萬行，系統的複雜度也越來越高，傳統驗證程式正確性的方式如unit testing、code review等等...受限於人工而相當有限；在硬體計算能力突飛猛進的現代，自動化測試的方式又逐漸成為顯學，如fuzzing、symbolic execution...能夠自動尋找程式中可能的漏洞，其中symbolic execution是一種模擬執行的方法，它將程式的使用者輸入視為符號，並把程式執行過程和分支條件轉換為限制式，藉由求解限制式來獲得欲執行該路徑所需的使用者輸入為何；由於symbolic execution在遇到分支時會複製出一條新的路徑，兩條路徑分別探索執行if時和執行else時的狀態，因此路徑數量會以指數的數量級成長，造成探索路徑需要花費巨大的運算資源，這個問題被稱為path explosion problem，這篇論文欲以蒙地卡羅樹搜尋演算法來找出探索價值較高的路徑，使得symbolic execution能使用較短的時間內獲得更高的程式執行覆蓋率。
 
+蒙地卡羅樹搜尋被廣泛的運用在遊戲人工智慧中，例如西洋棋、黑白棋、圍棋等等的棋盤遊戲，在2016年AlphaGo(一個結合蒙地卡羅樹搜尋和深度學習的圍棋AI程式)擊敗世界棋王後，更是一度引起相當多的討論；此演算法主要的精神在於對一棵樹，選擇子結點並嘗試用模擬的方式估計該結點的價值。和symbolic execution相當類似的地方在於同為需要探索一棵樹，而且要避免探索一些我們不感興趣或是沒有必要探索的路徑，例如無窮迴圈的狀況；我們認為結合蒙地卡羅樹搜尋做為symbolic execution挑選路徑執行的演算法，相較於傳統的深度優先搜尋法或廣度優先搜尋法，能有較佳的搜尋效率。
+
+% \cite{thesis}.
+
+% 9/30
 \chapter{Background}
+
+\section{Symbolic execution}
+
+\section{Path Exploration}
+
+\section{Monte Carlo tree search}
 
 \chapter{Design}
   
@@ -121,6 +133,7 @@ NCTU latex thesis\cite{thesis}.
 
 \chapter{Evaluation}
 
+% 9/30
 \chapter{Related Work}
 
 \chapter{Conclusion}
