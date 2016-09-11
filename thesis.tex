@@ -60,7 +60,7 @@
   }
 }
 
-
+\usepackage{comment}
 
 % do not place figure at the middle of a empty page
 \makeatletter
@@ -82,7 +82,7 @@
 \newcommand{\studentCnName}{葉家郡}
 \newcommand{\studentEnName}{Jia-Jun Yeh}
 \newcommand{\advisorCnName}{黃世昆}
-\newcommand{\advisorEnName}{aaa}
+\newcommand{\advisorEnName}{Shih-Kun Huang}
 
 \usepackage{pdfpages}
 
@@ -125,10 +125,12 @@
 
 \section{Symbolic execution}
 
+% 說明symbolic execution的流程和精神
 在本篇論文中所提及的Symbolic execution為Dynamic symbolic execution(又名為Concolic execution)，首先由K. Sen\cite{sen2007concolic}提出，和基於其想法實作的程式DART\cite{godefroid2005dart}、CUTE\cite{sen2005cute}，而其近年又分為兩種類型，需要程式原始碼的code-based symbolic execution，如KLEE\cite{cadar2008klee}和不須程式碼而直接分析程式執行檔的binary-based symbolic execution如S2E\cite{chipounov2012s2e}、Mayhem\cite{cha2012mayhem}；symbolic execution engines在分析程式時會將其載入並先轉換成一個共通的表示方式，接著會將使用者輸入(例如標準輸入、檔案、命令列參數)標記為symbolic變數，接著模擬程式的執行過程，將執行過程中遇到的程式碼轉換為數學邏輯限制式的形式，當在模擬的過程中遇到分支條件時，便複製出一條新的路徑，分別追蹤該分支條件為真和為假時的情況；當模擬執行結束時，把先前蒐集的邏輯限制式利用SMT solver\cite{vanegue2012smt}求解，以取得欲執行該路徑所需的實際輸入值；透過這個流程理論上我們可以追蹤所有的執行路徑，探索是否有不當的輸入值能觸發特定程式區段，或避開某些程式區段。
 
 \section{Path Exploration}
 
+% 說明symbolic execution中的路徑探索問題
 雖然Symbolic execution理論上能夠探索所有執行路徑，但在探索的過程中可能會遭遇到一些問題：當分支條件取決於symbolic變數時，很有可能兩邊的條件都有可能成立，這意謂著程式必須複製並分別維護兩條路徑，直到發現該路徑無解為止，當路徑被不斷的複製就產生了路徑爆炸問題(path explosion problem)。
 
 \section{Monte Carlo tree search}
@@ -142,15 +144,15 @@
 % 9/30
 \chapter{Related Work}
 
-在\cite{sharma2012critical}\cite{schwartz2010all}中對symbolic execution所做的概述，提及了幾項目前的挑戰，其中最大的問題就是路徑選擇問題(path selection problem)，當路徑爆炸問題已成一個不可避免的問題，目前已經提出的幾種解決方式有：
-\begin{itemize}
-\item \textbf{深度優先搜尋法} 
-優先探索最深的路徑，在KLEE\cite{cadar2008klee}中便使用這種作法，但很有可能被困在無限迴圈而進行了無效的探索。
-\item \textbf{concolic testing}
-在\cite{sen2007concolic}中提出，除了以symbolic execution執行，也會使用具體的輸入真正執行程式來蒐集執行路徑，如\cite{sen2005cute}就使用了這種作法。
-\item \textbf{隨機挑選路徑} KLEE\cite{cadar2008klee}也支援隨機挑選路徑的方式來避免進行了無效的探索。
+\section{Path Selection Problem}
 
-\end{itemize}
+% survey別人解決這個問題的方法
+在\cite{sharma2012critical}\cite{schwartz2010all}中對symbolic execution所做的概述，提及了幾項目前的挑戰，其中最大的問題就是路徑選擇問題(path selection problem)，當路徑爆炸問題已成一個不可避免的問題，目前已經提出的幾種解決方式如：KLEE\cite{cadar2008klee}中提出的深度優先搜尋法來優先探索最深的路徑，中便使用這種作法，但很有可能被困在無限迴圈而進行了無效的探索。\cite{sen2007concolic}提出的concolic testing，除了以symbolic execution執行，也會使用具體的輸入真正執行程式來蒐集執行路徑，\cite{sen2005cute}就使用了這種作法。而KLEE\cite{cadar2008klee}也支援隨機挑選路徑的方式來避免進行了無效的探索。
+
+另外如driller\cite{stephens2016driller}結合了AFL\cite{AFL}的fuzzing技術，它將使用者輸入分類為需要特定值的特定輸入(specific input)和可接受各種數值的通用輸入(general input)，並透過symbolic execution engine和fuzzing engine的切換來解決各自不擅長的部分。而s2e\cite{chipounov2012s2e}則是利用選擇性的symbolic execution，避免連同其他函式庫也一起分析，造成路徑數量大量增長。另外也有針對路徑成長，檢查其可滿足性(satisfiability)並做動態剪枝的方法\cite{PathPruning}。
+
+\section{MCTS and Game AI}
+% survey別人使用MCTS能夠解決的問題
 
 
 \chapter{Conclusion}
