@@ -135,6 +135,25 @@
 
 \section{Monte Carlo tree search}
 
+MCTS是一種啟發式搜尋演算法，近年來最廣為人知的應用是遊戲AI方面的演算法；Monte Carlo模擬是利用模擬和統計，得到一個近似解，在足夠大量的模擬下，理論上我們可以得到一個跟最佳解非常接近的答案。MCTS套用了這種模擬的方式，維護一棵樹(在遊戲AI中通常是一個遊戲盤面的狀態樹)並統計每個盤面的勝率，期望能只探索部分的樹，而非全部探索完的情況下，就能知道該盤面的勝率。
+
+在\cite{browne2012surveyMCTS}中說明了MCTS演算法的基本流程，如Figure \ref{figMCTS}：
+
+\begin{figure}[h]
+\center
+\includegraphics[width=\textwidth,height=\textheight,keepaspectratio]{figures/MCTS.png}
+\caption{Monte Carlo Tree Search \label{figMCTS}}
+\end{figure}
+
+\begin{itemize}
+\item \textbf{Selection} 根據設定的\textit{Tree Policy}，從根節點開始遞迴性的決定一個目前最需要展開的節點，可展開的節點在這裡定義為狀態尚未終止且有尚未訪問的子節點。
+\item \textbf{Expansion} 在選擇的節點上，執行一個合法的動作來新增子節點。
+\item \textbf{Simulation} 從這個新增的節點上使用\textit{Default Policy}來進行模擬執行，產生結果。
+\item \textbf{Backpropagation} 模擬的結果會回饋到步驟1所選擇路過的那些節點上，更新他們的統計數據。
+\end{itemize}
+
+在這邊有兩個policy：\textit{Tree Policy}代表的是如何決定要選擇和新增節點的演算法。\textit{Default Policy}則是從該節點的狀態模擬對局直到獲得勝負結果。雖然這兩個Policy也可以簡單的使用隨機方式決定，但適當的演算法有助於強化MCTS的準確度，如\cite{Intro2MCTS}便指出，Tree Policy可以使用UCB1演算法來取代隨機挑選，而UCT也可以替代原本的模擬，當可能的選擇有很多，卻只有少數一兩個有可能被採取時，隨機選擇不太容易挑到，而造成模擬的結果不精準，如果我們把盤面的位置當成吃角子老虎機，視為multi-armed bandit problem，會比原本的隨機選擇好；另外他也指出模擬時除了用這些簡單的方法，也可以使用更耗費資源的啟發式邏輯和評價方式，在對於higher branching factor的遊戲會有較好的效果。
+
 \chapter{Design}
   
 \chapter{Implementation}
