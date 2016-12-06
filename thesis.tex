@@ -1,5 +1,11 @@
 \documentclass[12pt,a4paper,oneside]{book}
 
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+%\usepackage{algorithmic}
+\usepackage{amsmath}
+\usepackage{graphics}
+\usepackage{epsfig}
 % border setting
 \usepackage[ top=2.5cm,bottom=2.5cm,left=2.5cm,right=2.5cm ]{ geometry }
 
@@ -85,7 +91,7 @@
 \newcommand{\advisorEnName}{Shih-Kun Huang}
 
 \usepackage{pdfpages}
-
+\DeclareMathOperator*{\argmax}{arg\,max}
 \begin{document}
 
 \pagenumbering{gobble} % disabling page numbering
@@ -152,9 +158,81 @@ MCTS是一種啟發式搜尋演算法，近年來最廣為人知的應用是遊�
 \item \textbf{Backpropagation} 模擬的結果會回饋到步驟1所選擇路過的那些節點上，更新他們的統計數據。
 \end{itemize}
 
-在這邊有兩個policy：\textit{Tree Policy}代表的是如何決定要選擇和新增節點的演算法。\textit{Default Policy}則是從該節點的狀態模擬對局直到獲得勝負結果。雖然這兩個Policy也可以簡單的使用隨機方式決定，但適當的演算法有助於強化MCTS的準確度，如\cite{Intro2MCTS}便指出，Tree Policy可以使用UCB1演算法來取代隨機挑選，而UCT也可以替代原本的模擬，當可能的選擇有很多，卻只有少數一兩個有可能被採取時，隨機選擇不太容易挑到，而造成模擬的結果不精準，如果我們把盤面的位置當成吃角子老虎機，視為multi-armed bandit problem，會比原本的隨機選擇好；另外他也指出模擬時除了用這些簡單的方法，也可以使用更耗費資源的啟發式邏輯和評價方式，在對於higher branching factor的遊戲會有較好的效果。
+在這邊有兩個policy：\textit{Tree Policy}代表的是如何決定要選擇和新增節點的演算法。\textit{Default Policy}則是從該節點的狀態模擬對局直到獲得勝負結果。雖然這兩個Policy也可以簡單的使用隨機方式決定，但適當的演算法有助於強化MCTS的準確度，如\cite{Intro2MCTS}便指出，Tree Policy可以使用UCB1演算法來取代隨機挑選，當可能的選擇有很多，卻只有少數一兩個有可能被採取時，隨機選擇不太容易挑到，而造成模擬的結果不精準，如果我們把盤面的位置當成吃角子老虎機，視為multi-armed bandit problem，會比原本的隨機選擇好；另外他也指出模擬時除了用這些簡單的方法，也可以使用更耗費資源的啟發式邏輯和評價方式，在對於higher branching factor的遊戲會有較好的效果。
 
 \chapter{Design}
+
+傳統的MCTS演算法是為了要在特定時間或電腦資源使用量內做出某個決策，利用隨機模擬與統計的方式尋找出一個最佳解，如何最有效的擴展空間狀態樹是我們的演算法可以仿效之處。對symbolic execution而言，目標就變成如何達到更高的執行覆蓋率，以盡量的挖掘出可能的漏洞。\textbf{Algorithm 1.}為我們設計的演算法主體，其中有兩項可自行定義的參數$N$和$\alpha$，$N$代表的是在\textit{Default Policy}中模擬執行的次數，越多次模擬的結果會更精準，但也需要花費更多的時間；而$\alpha \beta$是為了調整模擬生成之children的value $Q$，$\frac{|V-B|}{N}$為children $p_c$可能增加執行覆蓋率的期望值，$|p_c|$為$p_c$執行過的basic blocks數量。
+
+\begin{algorithm}[h]
+  \caption{applying UCT algorithm to symbolic execution}
+  \begin{algorithmic}[1]
+  	\Function{Search}{$p_r$}
+    \State set $p_r$ as root of Tree $T$
+    \State $B \leftarrow \emptyset$
+    \While {within computational budget}
+      \State $p$ $\leftarrow$ TreePolicy($T$)
+      \State $B \leftarrow B \bigcup p$
+      \State $S$ $\leftarrow$ step($p$)
+      \For{each path $p_c \in S$}
+      	\State $V \leftarrow$ DefaultPolicy($p_c$)
+        \State $Q(p_c) \leftarrow \alpha \frac{|V-B|}{N} + \beta|p_c|$
+        \State add a new child $p_c$ to $p$
+      \EndFor
+      \State BackPropagation($p$)
+    \EndWhile
+    \EndFunction
+  \end{algorithmic}
+\end{algorithm}
+
+\begin{algorithm}[h]
+  \caption{Policies for our algorithm}
+  \begin{algorithmic}[]
+    \Function{TreePolicy}{$T$}
+    	\State $n \leftarrow$ root of $T$
+        \While {$n$ is not terminated}
+        	\If{$n$ is expandable}
+            	\State \Return {$n$}
+            \Else
+            	\State $n \leftarrow BestChild(n,C)$
+            \EndIf
+        \EndWhile
+    \EndFunction
+    \item[]
+	\Function{DefaultPolicy}{$p$}
+    	\State $V \leftarrow \emptyset$
+        \For{$i=1$; $i<N$; $i++$}
+          \State $v \leftarrow$ find vertex at CFG($p$'s addr)
+          \For{$j=1$; ($j<M$)and($v$ has any edge); $j++$}
+              \State add $v$ to $V$
+              \State $v \leftarrow$ random pick a vertex which $v$ directed to
+          \EndFor
+        \EndFor
+        \State \Return $V$
+    \EndFunction
+    \item[]
+    \Function{BestChild}{$p,C$}
+    	\State $Q_{max} \leftarrow \operatorname*{arg\,max}_{p_c \in p} Q(p_c)$
+    	\State \[ \Return \argmax_{p_c \in p} \frac{Q(p_c)}{Q_{max}}+C\sqrt[]{\frac{2\ln N(p)}{N(p_c)}} \]
+    \EndFunction
+    \item[]
+    \Function{BackPropagation}{$v$}
+    \While{$v$ is not null}
+    	\State N($v$) += 1
+		\State Q($v$) $\leftarrow$ average of Q($v$'s children)
+    \State $v \leftarrow$ parent of $v$
+    \EndWhile
+    \EndFunction
+  \end{algorithmic}
+\end{algorithm}
+  
+\textbf{Algorithm 1.}在執行時除了紀錄MCTS樹的資料，也會記錄目前已經執行過的block來計算覆蓋率和判斷期望值，首先經由\textit{TreePolicy}選出應該被展開的節點$p$，接著把該節點執行過的blocks加進集合$B$中，接著用symbolic execution的step往前執行一個block，他會回傳增加這個block後的結果，根據該block的分枝跳轉方式，可能為1到多條path。我們要將所有產生的path都進行模擬以計算出$p$的value $Q$，首先將產生出的path $p_c$利用\textit{DefaultPolicy}模擬出未來可能的執行路徑，並以公式計算出$Q$，並將$p_c$新增到$T$中視為$p$的children；最後於\textit{BackPropagation}時，以children的value平均作為$p$的value，並將此結果一路更新到root節點。
+  
+在演算法中有幾項參數來影響選擇的策略，針對不同的程式特性來設定有可能得到更好的性能。計算$Q$時的$\alpha$主要控制的是增加覆蓋率的期望值，由於路徑的模擬是根據CFG來猜測，如果產生的CFG不正確或程式的實際執行狀況和模擬的結果有落差，期望值就會變得不準確，相對的對於簡單的小程式，模擬的準確度有可能是較高的，因此適當的調整$\alpha$可以修正模擬的數據；而$\beta$是為了因應遇到大量迴圈或strcmp這類function的措施，由於進入迴圈容易產生大量的分枝，會讓path數量一下子成長很多，\textit{TreePolicy}在選擇時也容易被混淆，我們透過計算該path已經執行過的basic blocks數量，讓演算法在挑選時偏好已經執行比較多數量的path，因為較多的數量也意味著較有可能離開迴圈。
+
+\textit{TreePolicy}中還有一個參數$C$，其影響的是expolitation和exploration，也就是程式該往較深的點進行計算，還是選擇較少被計算過的點，不過這個數值在branching factor高時較有效，而我們產生出的path常常只有1至2個，所以這個參數的影響並不大，唯一會影響的是當某個節點尚未被計算過任何一次的時候，$N(p_c)$為0，根號內的數值會是無限大，程式就一定會選擇該節點來進行計算。
+  
+最後是\textit{DefaultPolicy}的參數$N,M$，$N$是要進行幾次模擬，而$M$是避免程式進入無窮迴圈，當到達一定數字時會強制中斷模擬，對於較小的程式可以選擇較小的數字，而較複雜的程式可以選擇比較大的數字來增加其準確性，但也相對的花費更多時間。
   
 \chapter{Implementation}
 
