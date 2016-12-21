@@ -132,7 +132,7 @@
 \section{Symbolic execution}
 
 % 說明symbolic execution的流程和精神
-在本篇論文中所提及的Symbolic execution為Dynamic symbolic execution(又名為Concolic execution)，首先由K. Sen\cite{sen2007concolic}提出，和基於其想法實作的程式DART\cite{godefroid2005dart}、CUTE\cite{sen2005cute}，而其近年又分為兩種類型，需要程式原始碼的code-based symbolic execution，如KLEE\cite{cadar2008klee}和不須程式碼而直接分析程式執行檔的binary-based symbolic execution如S2E\cite{chipounov2012s2e}、Mayhem\cite{cha2012mayhem}；symbolic execution engines在分析程式時會將其載入並先轉換成一個共通的表示方式，接著會將使用者輸入(例如標準輸入、檔案、命令列參數)標記為symbolic變數，接著模擬程式的執行過程，將執行過程中遇到的程式碼轉換為數學邏輯限制式的形式，當在模擬的過程中遇到分支條件時，便複製出一條新的路徑，分別追蹤該分支條件為真和為假時的情況；當模擬執行結束時，把先前蒐集的邏輯限制式利用SMT solver\cite{vanegue2012smt}求解，以取得欲執行該路徑所需的實際輸入值；透過這個流程理論上我們可以追蹤所有的執行路徑，探索是否有不當的輸入值能觸發特定程式區段，或避開某些程式區段。
+在本篇論文中所提及的Symbolic execution為Dynamic symbolic execution(又名為Concolic execution)，首先由K. Sen\cite{sen2007concolic}提出，和基於其想法實作的程式DART\cite{godefroid2005dart}、CUTE\cite{sen2005cute}，而其近年又分為兩種類型，需要程式原始碼的code-based symbolic execution，如KLEE\cite{cadar2008klee}和不須程式碼而直接分析程式執行檔的binary-based symbolic execution如S2E\cite{chipounov2012s2e}、Mayhem\cite{cha2012mayhem}；symbolic execution engines在分析程式時會將其載入並先轉換為intermediate representation (IR)，接著會將使用者輸入(例如標準輸入、檔案、命令列參數)標記為symbolic變數，接著模擬程式的執行過程，將執行過程中遇到的程式碼轉換為數學邏輯限制式的形式，當在模擬的過程中遇到分支條件時，便複製出一條新的路徑，分別追蹤該分支條件為真和為假時的情況；當模擬執行結束時，把先前蒐集的邏輯限制式利用solver求解(如：SMT\cite{vanegue2012smt}、Z3\cite{Z3}等等)，以取得欲執行該路徑所需的實際輸入值；透過這個流程理論上我們可以追蹤所有的執行路徑，探索是否有不當的輸入值能觸發程式崩潰。
 
 \section{Path Exploration}
 
@@ -147,22 +147,22 @@ MCTS是一種啟發式搜尋演算法，近年來最廣為人知的應用是遊�
 
 \begin{figure}[h]
 \center
-\includegraphics[width=\textwidth,height=\textheight,keepaspectratio]{figures/MCTS.png}
+\includegraphics[width=\textwidth,height=\textheight,keepaspectratio]{figures/mcts2.PNG}
 \caption{Monte Carlo Tree Search \label{figMCTS}}
 \end{figure}
 
 \begin{itemize}
-\item \textbf{Selection} 根據設定的\textit{Tree Policy}，從根節點開始遞迴性的決定一個目前最需要展開的節點，可展開的節點在這裡定義為狀態尚未終止且有尚未訪問的子節點。
-\item \textbf{Expansion} 在選擇的節點上，執行一個合法的動作來新增子節點。
+\item \textbf{Selection} 根據設定的\textit{Tree Policy}，從根節點開始遞迴性的決定一個目前最需要展開的節點，如Figure \ref{figMCTS}中的Selection部分，以粗框標記出的節點。可展開的節點在這裡定義為狀態尚未終止且有尚未訪問的子節點。
+\item \textbf{Expansion} 在選擇的節點上，執行一個合法的動作來新增子節點，如Figure \ref{figMCTS}中的Expansion部分，在挑選的節點下新增一個節點。
 \item \textbf{Simulation} 從這個新增的節點上使用\textit{Default Policy}來進行模擬執行，產生結果。
 \item \textbf{Backpropagation} 模擬的結果會回饋到步驟1所選擇路過的那些節點上，更新他們的統計數據。
 \end{itemize}
 
-在這邊有兩個policy：\textit{Tree Policy}代表的是如何決定要選擇和新增節點的演算法。\textit{Default Policy}則是從該節點的狀態模擬對局直到獲得勝負結果。雖然這兩個Policy也可以簡單的使用隨機方式決定，但適當的演算法有助於強化MCTS的準確度，如\cite{Intro2MCTS}便指出，Tree Policy可以使用UCB1演算法來取代隨機挑選，當可能的選擇有很多，卻只有少數一兩個有可能被採取時，隨機選擇不太容易挑到，而造成模擬的結果不精準，如果我們把盤面的位置當成吃角子老虎機，視為multi-armed bandit problem，會比原本的隨機選擇好；另外他也指出模擬時除了用這些簡單的方法，也可以使用更耗費資源的啟發式邏輯和評價方式，在對於higher branching factor的遊戲會有較好的效果。
+在這邊有兩個policy：\textit{Tree Policy}代表的是如何決定要選擇和新增節點的演算法。\textit{Default Policy}則是從該節點的狀態模擬對局直到獲得勝負結果。雖然這兩個Policy也可以簡單的使用隨機方式決定，但適當的演算法有助於強化MCTS的準確度，如\cite{Intro2MCTS}便指出，Tree Policy可以使用upper confidence bound (UCB)演算法來取代隨機挑選，當可能的選擇有很多，卻只有少數一兩個有可能被選擇時，隨機選擇不太容易挑到，而造成模擬的結果不精準，如果我們把盤面的位置當成吃角子老虎機，視為multi-armed bandit problem來處理的話，會比原本的隨機選擇好；另外他也指出模擬時除了用這些簡單的方法，也可以使用更耗費資源的啟發式邏輯和評價方式，在對於higher branching factor的遊戲會有較好的效果。
 
 \chapter{Design}
 
-傳統的MCTS演算法是為了要在特定時間或電腦資源使用量內做出某個決策，利用隨機模擬與統計的方式尋找出一個最佳解，如何最有效的擴展空間狀態樹是我們的演算法可以仿效之處。對symbolic execution而言，目標就變成如何達到更高的執行覆蓋率，以盡量的挖掘出可能的漏洞。\textbf{Algorithm 1.}為我們設計的演算法主體，其中有兩項可自行定義的參數$N$和$\alpha$，$N$代表的是在\textit{Default Policy}中模擬執行的次數，越多次模擬的結果會更精準，但也需要花費更多的時間；而$\alpha \beta$是為了調整模擬生成之children的value $Q$，$\frac{|V-B|}{N}$為children $p_c$可能增加執行覆蓋率的期望值，$|p_c|$為$p_c$執行過的basic blocks數量。
+傳統的MCTS演算法是為了要在特定時間或電腦資源使用量內做出某個決策，利用隨機模擬與統計的方式尋找出一個最佳解，如何最有效的擴展空間狀態樹是我們的演算法可以仿效之處。對symbolic execution而言，目標就變成如何達到更高的執行覆蓋率，以盡量的挖掘出可能的漏洞。Algorithm 1 為我們設計的演算法主體，其中有兩項可自行定義的參數$N$和$\alpha$，$N$代表的是在\textit{Default Policy}中模擬執行的次數，越多次模擬的結果會更精準，但也需要花費更多的時間；而$\alpha \beta$是為了調整模擬生成之children的value $Q$，$\frac{|V-B|}{N}$為children $p_c$可能增加執行覆蓋率的期望值，$|p_c|$為$p_c$執行過的basic blocks數量。
 
 \begin{algorithm}[h]
   \caption{applying UCT algorithm to symbolic execution}
@@ -226,15 +226,13 @@ MCTS是一種啟發式搜尋演算法，近年來最廣為人知的應用是遊�
   \end{algorithmic}
 \end{algorithm}
   
-\textbf{Algorithm 1.}在執行時除了紀錄MCTS樹的資料，也會記錄目前已經執行過的block來計算覆蓋率和判斷期望值，首先經由\textit{TreePolicy}選出應該被展開的節點$p$，接著把該節點執行過的blocks加進集合$B$中，接著用symbolic execution的step往前執行一個block，他會回傳增加這個block後的結果，根據該block的分枝跳轉方式，可能為1到多條path。我們要將所有產生的path都進行模擬以計算出$p$的value $Q$，首先將產生出的path $p_c$利用\textit{DefaultPolicy}模擬出未來可能的執行路徑，並以公式計算出$Q$，並將$p_c$新增到$T$中視為$p$的children；最後於\textit{BackPropagation}時，以children的value平均作為$p$的value，並將此結果一路更新到root節點。
+Algorithm 1 在執行時除了紀錄MCTS樹的資料，也會記錄目前已經執行過的block來計算覆蓋率和判斷期望值，首先經由\textit{TreePolicy}選出應該被展開的節點$p$，接著把該節點執行過的blocks加進集合$B$中，接著用symbolic execution的step往前執行一個block，他會回傳增加這個block後的結果，根據該block的分枝跳轉方式，可能為1到多條path。我們要將所有產生的path都進行模擬以計算出$p$的value $Q$，首先將產生出的path $p_c$利用\textit{DefaultPolicy}模擬出未來可能的執行路徑，並以公式計算出$Q$，並將$p_c$新增到$T$中視為$p$的children；最後於\textit{BackPropagation}時，以children的value平均作為$p$的value，並將此結果一路更新到root節點。
   
 在演算法中有幾項參數來影響選擇的策略，針對不同的程式特性來設定有可能得到更好的性能。計算$Q$時的$\alpha$主要控制的是增加覆蓋率的期望值，由於路徑的模擬是根據CFG來猜測，如果產生的CFG不正確或程式的實際執行狀況和模擬的結果有落差，期望值就會變得不準確，相對的對於簡單的小程式，模擬的準確度有可能是較高的，因此適當的調整$\alpha$可以修正模擬的數據；而$\beta$是為了因應遇到大量迴圈或strcmp這類function的措施，由於進入迴圈容易產生大量的分枝，會讓path數量一下子成長很多，\textit{TreePolicy}在選擇時也容易被混淆，我們透過計算該path已經執行過的basic blocks數量，讓演算法在挑選時偏好已經執行比較多數量的path，因為較多的數量也意味著較有可能離開迴圈。
 
 \textit{TreePolicy}中還有一個參數$C$，其影響的是expolitation和exploration，也就是程式該往較深的點進行計算，還是選擇較少被計算過的點，不過這個數值在branching factor高時較有效，而我們產生出的path常常只有1至2個，所以這個參數的影響並不大，唯一會影響的是當某個節點尚未被計算過任何一次的時候，$N(p_c)$為0，根號內的數值會是無限大，程式就一定會選擇該節點來進行計算。
   
 最後是\textit{DefaultPolicy}的參數$N,M$，$N$是要進行幾次模擬，而$M$是避免程式進入無窮迴圈，當到達一定數字時會強制中斷模擬，對於較小的程式可以選擇較小的數字，而較複雜的程式可以選擇比較大的數字來增加其準確性，但也相對的花費更多時間。
-  
-\chapter{Implementation}
 
 \chapter{Evaluation}
 
@@ -243,14 +241,13 @@ MCTS是一種啟發式搜尋演算法，近年來最廣為人知的應用是遊�
 
 \section{Path Selection Problem}
 
-% survey別人解決這個問題的方法
 在\cite{sharma2012critical}\cite{schwartz2010all}中對symbolic execution所做的概述，提及了幾項目前的挑戰，其中最大的問題就是路徑選擇問題(path selection problem)，當路徑爆炸問題已成一個不可避免的問題，目前已經提出的幾種解決方式如：KLEE\cite{cadar2008klee}中提出的深度優先搜尋法來優先探索最深的路徑，中便使用這種作法，但很有可能被困在無限迴圈而進行了無效的探索。\cite{sen2007concolic}提出的concolic testing，除了以symbolic execution執行，也會使用具體的輸入真正執行程式來蒐集執行路徑，\cite{sen2005cute}就使用了這種作法。而KLEE\cite{cadar2008klee}也支援隨機挑選路徑的方式來避免進行了無效的探索。
 
 另外如driller\cite{stephens2016driller}結合了AFL\cite{AFL}的fuzzing技術，它將使用者輸入分類為需要特定值的特定輸入(specific input)和可接受各種數值的通用輸入(general input)，並透過symbolic execution engine和fuzzing engine的切換來解決各自不擅長的部分。而s2e\cite{chipounov2012s2e}則是利用選擇性的symbolic execution，避免連同其他函式庫也一起分析，造成路徑數量大量增長。另外也有針對路徑成長，檢查其可滿足性(satisfiability)並做動態剪枝的方法\cite{PathPruning}。
 
 \section{MCTS and Game AI}
-% survey別人使用MCTS能夠解決的問題
 
+Monte Carlo方法是一種隨機取樣的方法，在1987年由Bruce Abramson提出\cite{mcmethod}。而在1989年，Monte Carlo tree search由W. Ertel, J. Schumann和C. Suttner提出，用來改善搜尋演算法的時間如DFS、BFS等等。而在1993年B. Brügmann首先將Monte Carlo方法用於圍棋上\cite{mc_go}，直到2006年這個方法才由Rémi Coulom真正被命名為Monte Carlo tree search\cite{MCTS_naming}。之後 L. Kocsis and Cs. Szepesvári以MCTS為基礎發表了upper confidence bound 1 applied to trees (UCT)演算法\cite {UCT}。在2015年由Google Deepmind研發的圍棋AI AlphaGo\cite{alphago}，使用MCTS和deep learning演算法，擊敗了人類職業選手，頓時之間AI和機器學習又成為電腦科學界的顯學。
 
 \chapter{Conclusion}
 
