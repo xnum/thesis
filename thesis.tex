@@ -1,5 +1,6 @@
 \documentclass[12pt,a4paper,oneside]{book}
 
+\usepackage{booktabs}
 \usepackage{algorithm}
 \usepackage{algpseudocode}
 %\usepackage{algorithmic}
@@ -162,9 +163,11 @@ MCTS是一種啟發式搜尋演算法，近年來最廣為人知的應用是遊�
 
 \chapter{Design}
 
-傳統的MCTS演算法是為了要在特定時間或電腦資源使用量內做出某個決策，利用隨機模擬與統計的方式尋找出一個最佳解，如何最有效的擴展空間狀態樹是我們的演算法可以仿效之處。對symbolic execution而言，目標就變成如何達到更高的執行覆蓋率，以盡量的挖掘出可能的漏洞。Algorithm 1 為我們設計的演算法主體，其中有兩項可自行定義的參數$N$和$\alpha$，$N$代表的是在\textit{Default Policy}中模擬執行的次數，越多次模擬的結果會更精準，但也需要花費更多的時間；而$\alpha \beta$是為了調整模擬生成之children的value $Q$，$\frac{|V-B|}{N}$為children $p_c$可能增加執行覆蓋率的期望值，$|p_c|$為$p_c$執行過的basic blocks數量。
+MCTS演算法是為了要在特定時間或電腦資源使用量內做出某個決策，利用隨機模擬與統計的方式尋找出一個最佳解，如何最有效的擴展空間狀態樹是我們的演算法可以仿效之處。對symbolic execution而言，目標就變成如何達到更高的執行覆蓋率，以盡量的挖掘出可能的漏洞。
 
-\begin{algorithm}[h]
+我們希望在套用MCTS演算法後，能延緩path explosion problem的發生，並使symbolic execution相較於傳統的搜尋方法能在同樣的資源限制下(如時間限制、記憶體限制)走訪更多的程式碼。
+
+\begin{algorithm}[htbp]
   \caption{applying UCT algorithm to symbolic execution}
   \begin{algorithmic}[1]
   	\Function{Search}{$p_r$}
@@ -185,7 +188,11 @@ MCTS是一種啟發式搜尋演算法，近年來最廣為人知的應用是遊�
   \end{algorithmic}
 \end{algorithm}
 
-\begin{algorithm}[h]
+Algorithm 1 為我們設計的演算法主體。$p_r$為現在要搜尋的路徑，首先將$p_r$設為樹$T$的root，以記錄路徑間的關係，並以集合$B$來計算路徑走訪的數量。在第5行我們會先利用\textit{TreePolicy}從樹$T$中挑選一個應該計算的路徑$p$，並將$p$加進集合$B$中(路徑$p$事實上可以被視為是數個走訪過的位址集合)，接著將$p$遞交給symbolic engine進行計算，將這條路徑step一步；step後可能產生數條路徑，我們以集合$S$來表示，$S$中的路徑們代表$p$ step後可能的狀態，如執行if時或執行else時的狀態，遇到switch case時執行不同case的狀態；在第8行對$S$中的每條路徑$p_c$我們都會利用$DefaultPolicy$來模擬其未來可能的走向，並評估此路徑的價值$Q(p_c)$，並將$p_c$標記為$p$的child；最後在第13行整理先前第8-12行的資訊並記錄起來。
+
+在第10行為我們計算路徑價值的公式，此公式分為兩個部分，其中$\alpha$、$\beta$和$N$為可以人為控制的參數。$\frac{|V-B|}{N}$中的$V$為路徑$p_c$經由\textit{DefaultPolicy}計算後得出未來可能會執行的位址集合，和集合$B$取差集後計算其數量，除以$N$(\textit{DefaultPolicy}模擬的次數)就是路徑$p_c$增加程式執行區塊覆蓋率的期望值；而$|p_c|$為$p_c$執行過的程式碼區塊數量，這個參數是為了在所有路徑的覆蓋率期望值都非常低的時候，能優先選擇較深的路徑避免進行無謂的探索。$\alpha$和$\beta$是這兩個數值的權重。計算$Q$時的$\alpha$主要控制的是增加覆蓋率的期望值，由於路徑的模擬是根據Control flow graph(CFG)來猜測，如果產生的CFG不正確或程式的實際執行狀況和模擬的結果有落差，期望值就會變得不準確，相對的對於簡單的小程式，模擬的準確度有可能是較高的，因此適當的調整$\alpha$可以修正模擬的數據；而$\beta$是為了因應遇到大量迴圈或strcmp這類函式的措施，由於進入迴圈容易產生大量的分枝，會讓path數量一下子成長很多，\textit{TreePolicy}在選擇時也容易被混淆，我們透過計算該path已經執行過的程式碼區塊數量，讓演算法在挑選時偏好已經執行比較多區塊數量的路徑。
+
+\begin{algorithm}[htbp]
   \caption{Policies for our algorithm}
   \begin{algorithmic}[]
     \Function{TreePolicy}{$T$}
@@ -225,18 +232,43 @@ MCTS是一種啟發式搜尋演算法，近年來最廣為人知的應用是遊�
     \EndFunction
   \end{algorithmic}
 \end{algorithm}
-  
-Algorithm 1 在執行時除了紀錄MCTS樹的資料，也會記錄目前已經執行過的block來計算覆蓋率和判斷期望值，首先經由\textit{TreePolicy}選出應該被展開的節點$p$，接著把該節點執行過的blocks加進集合$B$中，接著用symbolic execution的step往前執行一個block，他會回傳增加這個block後的結果，根據該block的分枝跳轉方式，可能為1到多條path。我們要將所有產生的path都進行模擬以計算出$p$的value $Q$，首先將產生出的path $p_c$利用\textit{DefaultPolicy}模擬出未來可能的執行路徑，並以公式計算出$Q$，並將$p_c$新增到$T$中視為$p$的children；最後於\textit{BackPropagation}時，以children的value平均作為$p$的value，並將此結果一路更新到root節點。
-  
-在演算法中有幾項參數來影響選擇的策略，針對不同的程式特性來設定有可能得到更好的性能。計算$Q$時的$\alpha$主要控制的是增加覆蓋率的期望值，由於路徑的模擬是根據CFG來猜測，如果產生的CFG不正確或程式的實際執行狀況和模擬的結果有落差，期望值就會變得不準確，相對的對於簡單的小程式，模擬的準確度有可能是較高的，因此適當的調整$\alpha$可以修正模擬的數據；而$\beta$是為了因應遇到大量迴圈或strcmp這類function的措施，由於進入迴圈容易產生大量的分枝，會讓path數量一下子成長很多，\textit{TreePolicy}在選擇時也容易被混淆，我們透過計算該path已經執行過的basic blocks數量，讓演算法在挑選時偏好已經執行比較多數量的path，因為較多的數量也意味著較有可能離開迴圈。
 
-\textit{TreePolicy}中還有一個參數$C$，其影響的是expolitation和exploration，也就是程式該往較深的點進行計算，還是選擇較少被計算過的點，不過這個數值在branching factor高時較有效，而我們產生出的path常常只有1至2個，所以這個參數的影響並不大，唯一會影響的是當某個節點尚未被計算過任何一次的時候，$N(p_c)$為0，根號內的數值會是無限大，程式就一定會選擇該節點來進行計算。
-  
-最後是\textit{DefaultPolicy}的參數$N,M$，$N$是要進行幾次模擬，而$M$是避免程式進入無窮迴圈，當到達一定數字時會強制中斷模擬，對於較小的程式可以選擇較小的數字，而較複雜的程式可以選擇比較大的數字來增加其準確性，但也相對的花費更多時間。
+Algorithm 2是Algorithm 1中所提及的函式實作部分。\textit{TreePolicy}用來挑選應該被計算的路徑，而價值計算事實上是由$BestChild$決定，其中的一個參數$C$，其影響的是MCTS中常被提及的特徵：expolitation和exploration，也就是程式該往較深的點進行計算，還是選擇較少被計算過的點，不過這個數值在branching factor高時較有效，而我們產生出的path常常只有1至2個，所以這個參數的影響並不大，唯一會影響的是當某個節點尚未被計算過任何一次的時候，$N(p_c)$為0，根號內的數值會是無限大，程式就一定會選擇該節點來進行計算。\textit{DefaultPolicy}的參數$N,M$，$N$是要進行幾次模擬，而$M$是避免程式進入無窮迴圈，當到達一定數字時會強制中斷模擬，對於較小的程式可以選擇較小的數字，而較複雜的程式可以選擇比較大的數字來增加其準確性，但也相對的花費更多時間。$BackPropagation$則是更新兩項數值，$N(v)$為$v$被訪問的次數，對於價值$Q(v)$則以v的子節點們的平均來替代。
 
 \chapter{Evaluation}
 
-% 9/30
+\section{實驗環境與方法}
+
+我們將本篇論文提出的演算法實作於Angr (一個開源的python符號執行框架) \cite{angr}上，並在Ubuntu 16.04作業系統上安裝與執行所有需要的程式和測試的目標程式，目標程式的名稱與版本如下Table. \ref{binarys}。硬體環境使用的是Intel i7-2600k處理器以及24 GB記憶體。
+
+\newcommand{\ra}[1]{\renewcommand{\arraystretch}{#1}}
+\begin{table*}[h]\centering
+\ra{1.3}
+\label{binarys}
+\caption{Target Program's name and version}
+\begin{tabular}{@{}ll@{}}\toprule
+program name & version \\ \midrule
+cp           & 8.25    \\ 
+echo         & 8.25    \\ 
+hostname     & 3.16    \\ 
+ls           & 8.25    \\ 
+mkdir        & 8.25    \\ 
+ps           & 3.3.10  \\ 
+readelf      & 2.26.1  \\ 
+touch        & 8.25    \\ 
+cpp-markdown & 1.00    \\ 
+gif2png      & 2.5.8   \\ \bottomrule
+\end{tabular}
+\end{table*}
+
+\section{常數對演算法的效率影響}
+
+
+
+\section{演算法與其他方法的比較}
+
+\section{長時間執行的效率比較}
+
 \chapter{Related Work}
 
 \section{Path Selection Problem}
@@ -250,6 +282,10 @@ Algorithm 1 在執行時除了紀錄MCTS樹的資料，也會記錄目前已經�
 Monte Carlo方法是一種隨機取樣的方法，在1987年由Bruce Abramson提出\cite{mcmethod}。而在1989年，Monte Carlo tree search由W. Ertel, J. Schumann和C. Suttner提出，用來改善搜尋演算法的時間如DFS、BFS等等。而在1993年B. Brügmann首先將Monte Carlo方法用於圍棋上\cite{mc_go}，直到2006年這個方法才由Rémi Coulom真正被命名為Monte Carlo tree search\cite{MCTS_naming}。之後 L. Kocsis and Cs. Szepesvári以MCTS為基礎發表了upper confidence bound 1 applied to trees (UCT)演算法\cite {UCT}。在2015年由Google Deepmind研發的圍棋AI AlphaGo\cite{alphago}，使用MCTS和deep learning演算法，擊敗了人類職業選手，頓時之間AI和機器學習又成為電腦科學界的顯學。
 
 \chapter{Conclusion}
+
+我們提出的演算法在實驗中證實，在相同的時間限制和資源限制下，比起傳統的DFS和BFS策略能有效的探訪更多程式碼，同樣在沒有修改任何程式或資料的情況下，我們額外使用一棵樹來記錄路徑的資訊和親子關係，就算沒有使用MCTS的方法，紀錄路徑間的親子關係也有可能用來作為其他演算法上的cut或pruning使用；唯一被修改的是路徑進入symbolic engine計算的順序，這使我們的方法與其他技術如concolic testing\cite{sen2007concolic}, veritesting\cite{Veritesting}, driller\cite{stephens2016driller}整合的難度有可能是變低的。
+
+但我們的演算法仍然可能會有以下的問題，第一是path explosion problem，如果我們完全不修剪路徑，它仍然可能發生，只能盡力在發生前挑選價值高的路徑進行搜索；如果借助我們建立的樹來進行修剪，雖然可以延緩甚至避免這個問題發生，但有些路徑可能就不會被探索到。第二是symbolic execution既有的問題，當它遇到大量迴圈如strcmp函式，會產生大量路徑，我們的演算法也會遇到這個問題，這只能依靠veritesting或fuzzing來獲得解決。最後是CFG的問題，當靜態分析發生錯誤，如產生出的CFG有部分不正確，或是被混淆代碼(obfuscated code)等等可能的因素，那演算法對於模擬計算出的期望值就可能沒有效果，這時就只能依靠路徑的已執行程式碼區塊數量來判斷，演算法的效果會變差。
 
 \newpage
 
