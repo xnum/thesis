@@ -1,5 +1,6 @@
 \documentclass[12pt,a4paper,oneside]{book}
 
+\usepackage[titletoc]{appendix}
 \usepackage{subfigure}
 \usepackage{pgfplots}
 \usepackage{booktabs}
@@ -198,7 +199,7 @@ Figure \ref{figTREE}為範例程式碼Algorithm 1在symbolic execution計算過�
 對symbolic execution而言，不管採用哪種搜尋策略，我們的目標都是：如何達到更高的程式碼覆蓋率，以盡可能的測試出不同執行狀態時，程式是否會發生錯誤或崩潰。我們希望採用MCTS演算法來搜索時，能比傳統的搜尋方法能在同樣的資源限制下(如時間限制、記憶體限制)走訪更多的程式碼。
 
 \begin{algorithm}[htbp]
-  \caption{applying UCT algorithm to symbolic execution}
+  \caption{applying MCTS algorithm to symbolic execution}
   \begin{algorithmic}[1]
   	\Function{Search}{$p_r$}
     \State set $p_r$ as root of Tree $T$
@@ -218,9 +219,9 @@ Figure \ref{figTREE}為範例程式碼Algorithm 1在symbolic execution計算過�
   \end{algorithmic}
 \end{algorithm}
 
-Algorithm 2 為我們設計的演算法主體。$p_r$為現在要搜尋的路徑，首先將$p_r$設為樹$T$的root，以記錄路徑間的關係，並以集合$B$來計算路徑走訪的數量。在第5行我們會先利用\textit{Tree Policy}從樹$T$中挑選一個應該計算的路徑$p$，並將$p$加進集合$B$中(路徑$p$事實上可以被視為是數個走訪過的位址集合)，接著將$p$遞交給symbolic execution engine進行計算，將這條路徑step一步；step後可能產生數條路徑，我們以集合$S$來表示，$S$中的路徑代表$p$ step後可能的狀態，如執行if時或執行else時的狀態，遇到switch case時執行不同case的狀態；在第8行對$S$中的每條路徑$p_c$我們都會利用\textit{Default Policy}來模擬其未來可能的走向，並評估此路徑的價值$Q(p_c)$，將$p_c$標記為$p$的child；最後在第13行整理先前第8-12行的資訊並記錄起來。
+Algorithm 2 為我們設計的演算法主體。$p_r$為現在要搜尋的路徑，首先將$p_r$設為樹$T$的root，以記錄路徑間的關係，並以集合$B$來計算路徑走訪的數量。在第5行我們會先利用\textit{Tree Policy}從樹$T$中挑選一個應該計算的路徑$p$，並將$p$加進集合$B$中(路徑$p$事實上可以被視為是數個走訪過的位址集合)，接著將$p$遞交給symbolic execution engine進行計算，symbolic execution engine會將這條路徑step(往下執行若干條指令，直到遇見分支跳轉指令才停止)；step後可能產生數條路徑，我們以集合$S$來表示，$S$中的路徑代表$p$ step後可能的狀態，如執行if時或執行else時的狀態，遇到switch case時執行不同case的狀態；在第8行對$S$中的每條路徑$p_c$我們都會利用\textit{Default Policy}來模擬其未來可能的走向，並評估此路徑的價值$Q(p_c)$，將$p_c$標記為$p$的child；最後在第13行整理先前第8-12行的資訊並記錄起來。
 
-在第10行為我們計算路徑價值的公式，此公式分為兩個部分，其中$\alpha$、$\beta$和$N$為可以人為控制的參數。$\frac{|V-B|}{N}$中的$V$為路徑$p_c$經由\textit{Default Policy}計算後得出未來可能會執行的位址集合，和集合$B$取差集後計算其數量，除以$N$(\textit{Default Policy}模擬的次數)就是路徑$p_c$增加程式執行區塊覆蓋率的期望值；而$|p_c|$為$p_c$執行過的程式碼區塊數量，這個參數是為了在所有路徑的覆蓋率期望值都非常低的時候，能優先選擇較深的路徑避免進行無謂的探索。$\alpha$和$\beta$是這兩個數值的權重。計算$Q$時的$\alpha$主要控制的是增加覆蓋率的期望值，由於路徑的模擬是根據Control flow graph(CFG)來猜測，如果產生的CFG不正確或程式的實際執行狀況和模擬的結果有落差，期望值就會變得不準確，相對的對於簡單的小程式，模擬的準確度有可能是較高的，因此適當的調整$\alpha$可以修正模擬的數據；而$\beta$是為了因應遇到大量迴圈或strcmp這類函式的措施，由於進入迴圈容易產生大量的分枝，會讓path數量一下子成長很多，\textit{Tree Policy}在選擇時也容易被混淆，我們透過計算該path已經執行過的程式碼區塊數量，讓演算法在挑選時偏好已經執行比較多區塊數量的路徑。
+在第10行為我們計算路徑價值的公式，此公式分為兩個部分，其中$\alpha$、$\beta$和$N$為可以人為控制的參數。$\frac{|V-B|}{N}$中的$V$為路徑$p_c$經由\textit{Default Policy}計算後得出未來可能會執行的位址集合，和集合$B$取差集後計算其數量，除以$N$(\textit{Default Policy}模擬的次數)就是路徑$p_c$增加程式執行區塊覆蓋率的期望值；而$|p_c|$為$p_c$執行過的程式碼區塊數量，這個參數是為了在所有路徑的覆蓋率期望值都非常低的時候，能優先選擇較深的路徑避免進行無謂的探索。$\alpha$和$\beta$是這兩個數值的權重。計算$Q$時的$\alpha$主要控制的是增加覆蓋率的期望值，由於路徑的模擬是根據Control flow graph(CFG)來猜測，如果產生的CFG不正確(不同的實作方式可能產生不同結果)或程式的實際執行狀況和模擬的結果有落差，期望值就會變得不準確，相對的對於簡單的小程式，模擬的準確度有可能是較高的，因此適當的調整$\alpha$可以修正模擬的數據；而$\beta$是為了因應遇到大量迴圈或strcmp這類函式的措施，由於進入迴圈容易產生大量的分枝，會讓path數量一下子成長很多，\textit{Tree Policy}在選擇時也容易被混淆，我們透過計算該path已經執行過的程式碼區塊數量，讓演算法在挑選時偏好已經執行比較多區塊數量的路徑。
 
 Algorithm 3是Algorithm 2中所提及的函式實作部分。\textit{Tree Policy}用來挑選應該被計算的路徑，而價值計算事實上是由$BestChild$決定，其中的一個參數$C$，其影響的是MCTS中最大的特徵：expolitation和exploration，也就是程式該往較深的點進行計算，還是選擇較少被計算過的點，不過這個數值在branching factor高時較有效，而我們產生出的path常常只有1至2個，所以這個參數的影響並不大，唯一會影響的是當某個節點尚未被計算過任何一次的時候，$N(p_c)$為0，根號內的數值會是無限大，程式就一定會選擇該節點來進行計算。\textit{Default Policy}的參數$N,M$，$N$是要進行幾次模擬，而$M$是避免程式進入無窮迴圈，當到達一定數字時會強制中斷模擬，對於較小的程式可以選擇較小的數字，而較複雜的程式可以選擇比較大的數字來增加其準確性，但也相對的花費更多時間。$BackPropagation$會更新兩項數值，$N(v)$為$v$被訪問的次數，對於價值$Q(v)$則以$v$的子節點們的平均來替代。
 
@@ -313,7 +314,9 @@ mkdir        & 320    & 275.96 & 1.16 & &  82    & 142.86& 0.57  & & 119     & 1
 ps           &  99    & 682.35 & 0.15 & & 185    & 176.52& 1.05  & & 109     &1083.84 & 0.10   \\
 readelf      & 288    & 870.36 & 0.33 & & 393    & 913.68& 0.43  & & 156     &1179.49 & 0.13   \\
 touch        & 302    & 331.78 & 0.91 & & 213    &1665.38& 0.13  & & 124     & 194.40 & 0.64   \\ \hline
-sum          & 2720   & 7515.88& 6.96 & & 2011   &9144.86& 4.90  & & 1515    &7474.42 & 4.50   \\ \bottomrule
+平均          & 495    &1366.52 & 1.27 & & 366    & 1662.7& 0.89  & & 275     & 1358.99 & 0.81 \\
+標準差        & 718    &2174.55 & 1.88 & & 539    & 2488.82& 1.35 & & 407     & 2095.99 & 1.23 \\ \bottomrule
+% sum          & 2720   & 7515.88& 6.96 & & 2011   &9144.86& 4.90  & & 1515    &7474.42 & 4.50   \\ \bottomrule
 \end{tabular}
 \end{table}
 
@@ -903,5 +906,109 @@ Monte Carlo方法是一種隨機取樣的方法，在1987年由Bruce Abramson提
 \newpage
 
 \printbibliography[title={References}]
+
+\newpage
+
+\begin{appendices}
+\chapter{實驗數據}
+
+下列表格為4.3節圖表的數據，其中round表示執行為第幾次step時，表格內數字為basic blocks涵蓋數量，最下方一行則是終止時的round數和basic blocks涵蓋數量。
+
+\begin{table}[htbp]
+\ra{1.3}
+\centering
+\caption{cpp-markdown \& cp 長時間執行數據}
+\label{testMethodB}
+\begin{tabular}{@{}llllllllllll@{}} \toprule
+             & \multicolumn{3}{c}{cpp-markdown} & \phantom{abc} & \multicolumn{3}{c}{cp} \\ \cmidrule{2-4} \cmidrule{6-8}
+round      & BFS   & DFS  & MCTS & & BFS   & DFS & MCTS     \\ \midrule
+100        & 47    & 47   & 47   & & 24    & 47  & 38       \\
+500        & 196   & 205  & 199  & & 50    & 164 & 119      \\
+1000       & 385   & 376  & 349  & & 92    & 178 & 202      \\
+2000       & 459   & 497  & 477  & & 126   & 186 & 331      \\
+5000       & 519   & 572  & 541  & & 196   & 222 & 462      \\
+10000      & 560   & 579  & 559  & & 215   & 222 & 573      \\
+20000      & 629   & 579  & 593  & & 226   & 222 & N/A      \\
+& 102k/661 & 110k/588 & 143k/606 & & 20k/226 & 64k/222 & 17k/581     \\ \bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[htbp]
+\ra{1.3}
+\centering
+\caption{echo \& gif2png 長時間執行數據}
+\label{testMethodC}
+\begin{tabular}{@{}llllllllllll@{}} \toprule
+             & \multicolumn{3}{c}{echo} & \phantom{abc} & \multicolumn{3}{c}{gif2png} \\ \cmidrule{2-4} \cmidrule{6-8}
+round      & BFS   & DFS  & MCTS & & BFS   & DFS & MCTS     \\ \midrule
+100        & 27    & 34   & 37   & & 23    & 14  & 26       \\
+500        & 43    & 52   & 67   & & 49    & 34  & 70       \\
+1000       & 57    & 57   & 71   & & 53    & 64  & 96       \\
+2000       & 77    & 71   & 79   & & 58    & 64  & 107      \\
+5000       & 105   & 84   & 92   & & 61    & 64  & 107      \\
+10000      & 118   & 87   & 93   & & 63    & 64  & 107      \\
+20000      & 129   & 87   & 102  & & 73    & 64  & 107      \\
+& 21k/129 & 94k/87 & 26k/103 & & 24k/74 & 64k/64 & 79k/107  \\ \bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[htbp]
+\ra{1.3}
+\centering
+\caption{hostname \& ls 長時間執行數據}
+\label{testMethodC}
+\begin{tabular}{@{}llllllllllll@{}} \toprule
+             & \multicolumn{3}{c}{hostname} & \phantom{abc} & \multicolumn{3}{c}{ls} \\ \cmidrule{2-4} \cmidrule{6-8}
+round      & BFS   & DFS  & MCTS & & BFS   & DFS & MCTS     \\ \midrule
+100        & 19    & 35   & 25   & & 38    & 44  & 35       \\
+500        & 57    & 61   & 95   & & 74    & 125 & 128      \\
+1000       & 60    & 61   & 128  & & 98    & 156 & 169      \\
+2000       & 61    & 61   & 146  & & 133   & 158 & 241      \\
+5000       & 63    & 61   & 184  & & 185   & 198 & 344      \\
+10000      & 64    & 61   & 184  & & 201   & 198 & 493      \\
+20000      & 65    & 61   & 184  & & N/A   & 198 & 646      \\ 
+& 25k/65 & 119k/61 & 65k/184 & & 12k/209 & 78k/198 & 21k/652 \\ \bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[htbp]
+\ra{1.3}
+\centering
+\caption{mkdir \& ps 長時間執行數據}
+\label{testMethodC}
+\begin{tabular}{@{}llllllllllll@{}} \toprule
+             & \multicolumn{3}{c}{mkdir} & \phantom{abc} & \multicolumn{3}{c}{ps} \\ \cmidrule{2-4} \cmidrule{6-8}
+round      & BFS   & DFS  & MCTS & & BFS   & DFS & MCTS     \\ \midrule
+100        & 24    & 49   & 40   & & 32    & 27  & 29       \\
+500        & 76    & 71   & 96   & & 55    & 118 & 72       \\
+1000       & 95    & 79   & 97   & & 84    & 185 & 83       \\
+2000       & 110   & 82   & 120  & & 107   & 185 & 96       \\
+5000       & 126   & 82   & 389  & & 116   & 185 & 107      \\
+10000      & 133   & 82   & 532  & & 128   & 185 & 271      \\
+20000      & 154   & 82   & 568  & & N/A   & 185 & N/A       \\
+& 34k/171 & 156k/82 & 35k/572 & & 11k/131 & 91k/185 & 15k/431 \\ \bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[htbp]
+\ra{1.3}
+\centering
+\caption{readelf \& touch 長時間執行數據}
+\label{testMethodD}
+\begin{tabular}{@{}llllllllllll@{}} \toprule
+             & \multicolumn{3}{c}{readelf} & \phantom{abc} & \multicolumn{3}{c}{touch} \\ \cmidrule{2-4} \cmidrule{6-8}
+round      & BFS   & DFS  & MCTS & & BFS   & DFS & MCTS     \\ \midrule
+100        & 39    & 41   & 43   & & 24    & 48  & 39       \\
+500        & 95    & 124  & 103  & & 71    & 117 & 141      \\
+1000       & 113   & 234  & 163  & & 91    & 161 & 218      \\
+2000       & 133   & 323  & 280  & & 116   & 184 & 286      \\
+5000       & 177   & 393  & 352  & & 142   & 222 & 307      \\
+10000      & 185   & 415  & 421  & & 161   & 222 & 334      \\
+20000      & 201   & 464  & 456  & & 175   & 222 & 339      \\ 
+& 22k/205 & 35k/466 & 90k/652  & & 24k/182 & 65k/222 & 139k/340 \\ \bottomrule
+\end{tabular}
+\end{table}
+
+\end{appendices}
 
 \end{document}
