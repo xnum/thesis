@@ -135,8 +135,16 @@
 % 說明symbolic execution的流程和精神
 在本篇論文中所提及的symbolic execution屬於Dynamic symbolic execution，首先由K. Sen\cite{sen2007concolic}提出，和基於其想法實作的程式DART\cite{godefroid2005dart}、CUTE\cite{sen2005cute}，而其近年又分為兩種類型：需要程式原始碼的code-based symbolic execution如KLEE\cite{cadar2008klee}，和不須程式碼而直接分析程式執行檔的binary-based symbolic execution如S2E\cite{chipounov2012s2e}、Mayhem\cite{cha2012mayhem}。symbolic execution engine在分析程式時會將其載入並先轉換為intermediate representation (IR)，接著會將使用者輸入(例如標準輸入、檔案、命令列參數)標記為symbolic變數，接著模擬程式的執行過程，將執行過程中遇到的程式碼轉換為數學邏輯限制式的形式，當在模擬的過程中遇到分支條件時，便複製出一條新的路徑，分別追蹤該分支條件為真和為假時的情況；當模擬執行結束時，把先前蒐集的邏輯限制式利用solver求解(如：SMT\cite{vanegue2012smt}、Z3\cite{Z3}等等)，以取得欲執行該路徑所需的實際輸入值；透過這個流程理論上我們可以追蹤所有的執行路徑，探索是否有不當的輸入值能觸發程式崩潰。
 
+如下Figure \ref{figSE}為一個簡單的binary-based symbolic execution執行時的狀況，它會依序讀入並根據指令進行相對應的模擬，位址4004f1將一個標記為symbolic variable的位址載入到暫存器eax中，則symbolic execution engine會在constraint table中標記eax為sym\_var1；4004f8將eax加3，symbolic execution engine則會在constraint table中記錄eax加3。當讀到比較而且需要跳轉的指令時，如果無法決定該執行哪個分支，如Figure \ref{figSE}中因為eax是由symbolic variable所決定的，當使用者輸入的是不同數值，將導致不同的分支被執行，因此symbolic execution engine需要分別追蹤該分支為真和假時的狀態；由於每執行一條指令就返回顯得十分沒有效率，通常會讓symbolic execution engine遇到跳轉指令時，處理完狀態複製再返回，這樣的流程我們將其稱為一個步驟(step)。
+
+\begin{figure}[htbp]
+\center
+\includegraphics[width=\textwidth]{figures/SE.PNG}
+\caption{symbolic execution流程 \label{figSE}}
+\end{figure}
+
 % 說明symbolic execution中的路徑探索問題
-雖然symbolic execution理論上能夠探索所有執行路徑，但在探索的過程中可能會遭遇到一些問題：當分支條件取決於symbolic變數時，很有可能兩邊的條件都有可能成立，這意謂著程式必須複製並分別維護兩條路徑，直到發現路徑無解為止，當路徑被不斷的複製，就產生了路徑爆炸問題(path explosion problem)。
+雖然symbolic execution理論上能夠探索所有執行路徑，但在探索的過程中可能會遭遇到一些問題：當分支條件取決於symbolic variable時，很有可能兩邊的條件都有可能成立，這意謂著程式必須複製並分別維護兩條路徑，直到發現路徑無解為止，當路徑被不斷的複製，就產生了路徑爆炸問題(path explosion problem)。
 
 \section{Monte Carlo tree search}
 
@@ -159,7 +167,17 @@ MCTS是一種啟發式搜尋演算法，近年來最廣為人知的應用是遊�
 
 在這邊有兩個policy：\textit{Tree Policy}代表的是如何決定要選擇和新增節點的演算法。\textit{Default Policy}則是如何從該節點的狀態模擬對局直到獲得勝負結果。雖然這兩個Policy也可以簡單的使用隨機方式決定，但適當的演算法有助於強化MCTS的準確度，如\cite{Intro2MCTS}便指出，\textit{Tree Policy}可以使用upper confidence bound (UCB)演算法來取代隨機挑選，如果我們把盤面的位置當成吃角子老虎機，視為multi-armed bandit problem來處理的話，會比原本的隨機選擇好；另外他也指出模擬時除了用這些簡單的方法，也可以使用更耗費資源的啟發式邏輯和評價方式，在對於higher branching factor的遊戲會有較好的效果。
 
-\chapter{Design}
+\chapter{Method}
+
+\section{Motivation example}
+
+在不同策略下，樹的走訪順序如Firuge \ref{figST}所示，假設固定先選擇的都是左子樹，DFS會優先選擇最深的節點來走訪，而BFS選擇最淺的節點，這兩個策略都有一樣的問題：順序是固定的，如DFS很可能因為左子樹太過龐大，但較高效益的節點在右子樹，而浪費很多時間在走訪較低效益的節點；又如BFS，很可能較高效益的節點要往深處搜尋，但走訪深度較淺的節點就已經花費不少時間。它們共同的問題就是走訪到節點5、6的順序都一樣是在最後面。而MCTS的走訪順序是不固定的，它會動態的選擇一個被認為是目前最應該走訪的節點來進行計算。
+
+\begin{figure}[htbp]
+\center
+\includegraphics[width=\textwidth]{figures/strategy.PNG}
+\caption{不同策略的樹走訪順序 \label{figST}}
+\end{figure}
 
 Figure \ref{figTREE}為範例程式碼Algorithm 1在symbolic execution計算過程中所建立的狀態樹，每個節點都代表著一個狀態，包含了程式的暫存器和記憶體內容，symbolic variables的constraint等等。root節點代表剛進入該段程式的狀態，而其左子節點則是執行完第1行時的狀態，我們以數字1來標記該節點目前執行的位址，沒有標記數字的節點則是代表程式結束，其他節點也以此類推。
 
@@ -197,6 +215,8 @@ Figure \ref{figTREE}為範例程式碼Algorithm 1在symbolic execution計算過�
 \end{algorithm}
 
 對symbolic execution而言，不管採用哪種搜尋策略，我們的目標都是：如何達到更高的程式碼覆蓋率，以盡可能的測試出不同執行狀態時，程式是否會發生錯誤或崩潰。我們希望採用MCTS演算法來搜索時，能比傳統的搜尋方法能在同樣的資源限制下(如時間限制、記憶體限制)走訪更多的程式碼。
+
+\section{proposed algorithm}
 
 \begin{algorithm}[htbp]
   \caption{applying MCTS algorithm to symbolic execution}
@@ -266,9 +286,19 @@ Algorithm 3是Algorithm 2中所提及的函式實作部分。\textit{Tree Policy
   \end{algorithmic}
 \end{algorithm}
 
+\section{algorithm explanation}
+
+如下Figure \ref{figStep} 為MCTS簡要的執行過程示意圖。在Step 1設定根節點後，由於沒有任何子節點，我們在Selection階段便直接選擇根節點，進行Expansion後新增兩個子節點，其價值經Simulation計算後分別為60和80。Step 2從根節點找到兩個子節點，在這邊選擇價值為80的子節點進行Expansion，得到兩個子節點並計算出其價值為50和52，獲得子節點的估計價值後，便可以作為Backpropagation使用，節點1的價值將改由其子節點價值的平均來取代，如這邊即從80變為51。Step 3因為在Step 2時修正了節點1的價值，在Selection階段便會轉而選擇節點2，經過Expansion和Simulation後同樣利用子節點來修正節點2的價值，不斷的重複這個步驟來挑選最應該被計算的節點。
+
+\begin{figure}[htbp]
+\center
+\includegraphics[width=\textwidth]{figures/step.PNG}
+\caption{MCTS執行過程 \label{figStep}}
+\end{figure}
+
 \chapter{Result and Evaluation}
 
-\section{實驗環境與方法}
+\section{Environment}
 
 我們將本篇論文提出的演算法實作於Angr (一個開源的python符號執行框架) \cite{angr}上，並在Ubuntu 16.04作業系統環境進行實驗，受測程式如Table \ref{binarys}。硬體環境使用的是Intel i7-2600k處理器以及24 GB記憶體。主要比較的目標是演算法經由symbolic execution所執行過的程式碼區塊數量：程式碼區塊指的是一段程式碼中間沒有任何的跳轉指令，而以跳轉指令為結尾，也就是說程式碼區塊執行直到最後一個指令時才會跳轉到其他區塊，每個區塊都不會發生與其他區塊有所重疊或覆蓋的情形；我們以程式碼區塊的第一條指令位址為其開始位址並作為判斷是否重複的標準，對重複執行過的區塊我們只會計算一次而不是會重複計算多次。在前章所提及的演算法參數，由於參數調校並非本篇論文的重點，因此在所有實驗中都固定使用同一組參數來進行。
 
@@ -877,7 +907,7 @@ touch        & 302    & 331.78 & 0.91 & & 213    &1665.38& 0.13  & & 124     & 1
 \caption{large test for touch \label{test_touch}}
 \end{figure}
 
-\newpage
+\section{Discussions}
 
 從個別的實驗數據中可以看到MCTS在面對不同程式所發揮的功用；伯仲之間的例子有Figure \ref{test_cpp-markdown}, \ref{test_echo}，成長情況不相上下，並沒有MCTS會完全弱於兩者的狀況。接著是DFS和BFS都會卡住不再成長而MCTS仍可繼續成長的情況：Figure \ref{test_cp}, \ref{test_gif2png}, \ref{test_hostname}, \ref{test_ls}, \ref{test_mkdir}，這也是在所有程式裡面占最多的例子，表示MCTS充分發揮了它的特性「exploitation and exploration」，當DFS和BFS分別在兩頭搜尋時，MCTS可以從中挑選較有價值的路徑來計算；最後是記憶體被耗盡的案例，如Figure \ref{test_ps}，DFS雖然較慢耗盡記憶體卻也沒有再挖掘到更多區塊，而BFS和MCTS都在差不多的地方耗盡了記憶體，MCTS卻能取得最好的結果，而Figure \ref{test_readelf}, \ref{test_touch}更凸顯出這一點，當DFS和BFS都已經被強制結束時，MCTS卻能找到更多區塊。
 
