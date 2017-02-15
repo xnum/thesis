@@ -123,7 +123,20 @@
 
 在現今的軟體開發中，程式碼數量動輒數萬行，系統的複雜度也越來越高，傳統驗證程式正確性的方式如unit testing、code review等等...受限於人工而相當有限。在硬體計算能力突飛猛進的現代，自動化測試的方式又逐漸成為顯學，如fuzzing、symbolic execution...能夠自動尋找程式中可能的漏洞，其中symbolic execution是一種模擬執行的方法，它將程式的使用者輸入視為符號，並把程式執行過程和分支條件轉換為限制式，藉由求解限制式來獲得欲執行該路徑所需的使用者輸入為何；由於symbolic execution在遇到分支時會複製出一條新的路徑，兩條路徑分別探索執行if時和執行else時的狀態，因此路徑數量會以指數的數量級成長，記錄並運算這些路徑需要花費巨大的電腦資源，這個問題被稱為路徑爆炸問題(path explosion problem)，這篇論文欲以蒙地卡羅樹搜尋演算法來找出探索價值較高的路徑，使得symbolic execution能使用較短的時間內獲得更高的程式執行覆蓋率。
 
-蒙地卡羅樹搜尋(Monte Carlo tree search)被廣泛的運用在遊戲人工智慧中，例如西洋棋、黑白棋、圍棋等等的棋盤遊戲，在2016年AlphaGo \cite{alphago}(一個結合蒙地卡羅樹搜尋和深度學習的圍棋AI程式)擊敗世界棋王後，更是一度引起相當多的討論。此演算法主要的精神在於：對一棵空間狀態樹，如何選擇節點，並以模擬的方式推估該節點的可能發展狀況和價值，藉由不斷的重複此動作來逼近最佳解。和symbolic execution相當類似的地方在於同為需要探索一棵樹，而且要避免探索一些我們不感興趣或是沒有必要探索的路徑；我們認為結合蒙地卡羅樹搜尋做為symbolic execution挑選路徑執行的演算法，相較於傳統的深度優先搜尋法或廣度優先搜尋法，能有較佳的搜尋效率。
+蒙地卡羅樹搜尋(Monte Carlo tree search)被廣泛的運用在遊戲人工智慧中，例如西洋棋、黑白棋、圍棋等等的棋盤遊戲，在2016年AlphaGO \cite{alphago}(一個結合蒙地卡羅樹搜尋和深度學習的圍棋AI程式)擊敗世界棋王後，更是一度引起相當多的討論。雖大眾關注的焦點多在人工智慧發展的進步、類神經網路應用到遊戲AI上時帶來的優異成績，卻鮮少提及與類神經網路演算法相互合作的重要元件 － 樹搜尋策略，Figure \ref{figAlphaGO}為\cite{alphago}中的樹搜尋策略演算法架構，在不同的演算法步驟下使用個別的類神經網路來引導MCTS做出選擇，如b. Expansion用的是supervised learning policy network、c. Evaluation分別使用了value network和rollout policy network的結果相加來評估盤面價值。MCTS主要的精神在於：對一棵空間狀態樹，如何選擇節點，並以模擬的方式推估該節點的可能發展狀況和價值，藉由不斷的重複此動作來逼近最佳解。
+
+\begin{figure}[htbp]
+\center
+\includegraphics[width=\textwidth]{figures/alphago.jpg}
+\caption{Monte Carlo tree search in AlphaGo 
+Source:D Silver et al. Nature 529, 484–489 (2016) doi:10.1038/nature16961
+ \label{figAlphaGO}}
+\end{figure}
+
+現今演算法的發展上已經逐漸地從利用人工設計的規則條件進展到讓機器自我建立規則的學習式機制，在各種領域如圖像辨識、資料探勘、自然語言處理、手寫文字識別、遊戲AI、機器人都有著蓬勃的發展，在這篇論文中預期以MCTS的角度切入，導入symbolic execution的路徑選擇演算法中，並比較其與傳統策略的效能差異。並希望在以MCTS為架構的演算法被建立後，在其之上加入機器學習的方法，如類神經網路、強化學習(Reinforcement learning)...，使得效能進一步增加，最後達到在漏洞挖掘上超越人類手工尋找的地步。
+
+
+
 
 
 \chapter{Background}
@@ -296,6 +309,66 @@ Algorithm 3是Algorithm 2中所提及的函式實作部分。\textit{Tree Policy
 \caption{MCTS執行過程 \label{figStep}}
 \end{figure}
 
+\chapter{Implementation}
+
+\section{Angr's architecture}
+
+Angr\cite{angr} 是一個支援多種架構的程式分析平台，主要以python撰寫，能夠執行如dynamic symbolic execution和多種靜態分析方法。這個平台可以自動替使用者完成一些工作，如：讀取並載入程式binary到分析平台中、將程式binary轉換成intermediate representation (IR)，程式靜態分析，如：相依性分析、control flow graph、data flow graph。Angr主要擁有以下幾個元件：binary loader可以載入不同平台的程式、Intermediate representation讓不同格式的程式都能使用同一套演算法或工具、Solver Engine以計算出symbolic execution中的變數值、Program states以模擬機器的狀態，如暫存器目前的值、Program paths以記錄程式執行的路徑作為分析用、symbolic execution和program analysis。
+
+要使用Angr進行程式分析必須自行撰寫python script來呼叫相關功能，如Figure \ref{figScript}為使用Angr執行symbolic execution的範例script；與作業系統執行process的過程類似，首先執行Line 22，必須找到程式的binary位置並傳給Angr進行初始化，由於程式大多會連結多個函式庫，如果將其視為程式的一部份一同載入會使得載入時間變得很長，因此在Line 14選擇關閉一同載入的功能，直到程式執行到該地方了再去載入函式庫；接著必須使用Angr內的solver engine：claripy來設定symbolic variables，以程式gif2png為例，執行的時候只需要給他兩個命令列選項，而第二個選項為圖片位置，所以我們將第一個選項設為symbolic variable，使用claripy的BVS (symbolic bitvector)物件，並給它一個名稱和初始值；再來的Line 16則是將設定好的程式啟動並執行到某個狀態，當程式要執行時除了讀取程式binary外還要設定它的記憶體區段、初始化數值、環境變數等等資訊，而我們所寫的entry是指這些資訊都設定完成時，程式剛要從程式進入點開始執行的狀態；另外我們還可以給它一些其它設定，如命令列參數傳入了剛剛宣告的symbolic variable，還有檔案的名稱，也可以設定執行時要開啟或關閉哪些選項，在這邊關閉了LAZY\_SOLVES功能，讓Angr會自動移除unsatisfiable的路徑；這些前置工作都完成後才獲得預備要進行symbolic execution的初始化狀態，接著在Line 18使用Angr的path\_group功能來代替我們管理symbolic execution的繁瑣設定；path\_group代表的是一群path的集合，當symbolic execution在執行時會不斷的增長出新的path，而path\_group可以將path進行分類，如：errored、unconstrainted、pruned、deadended、unsatisfiable等等，此外還能過濾、合併、複製路徑，或是設定symbolic execution要停止的條件，是一個功能相當強大的class。最後利用path\_group的run function就可以幫我們執行symbolic execution。
+
+\begin{figure}[htbp]
+\center
+\includegraphics[width=\textwidth]{figures/script.png}
+\caption{Example script to run symbolic execution in Angr \label{figScript}}
+\end{figure}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Exploration techniques}
+
+前一節提到了path\_group，在它內部也實作了一套方法可以讓使用者撰寫不同的exploration technique來應用到symbolic execution上，在提到exploration technique前必須先提及的是path\_group內執行symbolic execution的方法，我們呼叫的方法是run，其內部呼叫了step使其進行無數次迴圈，如Figure \ref{figAngrStep}為部分原始碼，run會將n設為一個極大值；而step真正呼叫的是\_one\_step function，執行後檢查是否還需要繼續執行，不斷進行迴圈。
+
+\begin{figure}[htbp]
+\center
+\includegraphics[]{figures/angrStep.png}
+\caption{partial code of step in Angr \label{figAngrStep}}
+\end{figure}
+
+\_one\_step function內才是真正會呼叫exploration techniques提供的方法之處，在啟用每個exploration technique時，Angr會將它們提供的四種方法：step、step\_path、filter、complete給加入hook function內，如Figure \ref{figAngrOneStep}中的變數\_hook\_step為一個陣列，裡面存放不同exploration techniques提供的step function，首先它會將一個step function取出，並執行該step function，而exploration technique提供的step function需要再呼叫一次step，這時如果還有其他hook的step就會取出來繼續執行，否則就會執行原生的step function，如Figure \ref{figExptech}為Exploration technique DFS的step function實作，Line 16先呼叫step後，才執行其對路徑的重新選擇。我們可以將exploration technique的step分為兩個部分，一為step前處理，一為step後處理，論文中的MCTS演算法實作完全是環繞於這兩個區塊而成。
+
+\begin{figure}[htbp]
+\center
+\includegraphics[]{figures/oneStep.png}
+\caption{partial code of one step in Angr \label{figAngrOneStep}}
+\end{figure}
+
+\begin{figure}[htbp]
+\center
+\includegraphics[]{figures/exptech.png}
+\caption{partial code of exploration technique(DFS) in Angr \label{figExptech}}
+\end{figure}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Applied MCTS into Angr}
+
+Figure \ref{figPreStep}是MCTS在step前所作的處理，對於接下來要用symbolic execution計算的路徑，會先取出該路徑的歷史路徑位址集合，並更新到目前總共執行過的位址集合中，這個集合在之後會用來判斷路徑是不是有可能增加覆蓋率，由於每次都只會有一條路徑在stash中準備要進行計算，所以我們只取出一條即可。
+
+\begin{figure}[htbp]
+\center
+\includegraphics[]{figures/preStep.png}
+\caption{MCTS of pre step in Angr \label{figPreStep}}
+\end{figure}
+
+呼叫完原本的step function後，就等同於演算法中的Expansion階段已經完成了，之後會進行MCTS的計算處理，如Figure \ref{figPostStep}，現在stash中的路徑都是剛剛進去計算的路徑的子節點，我們會將每一條都取出來，並進行Simulation，得到平均可增加覆蓋率後，將子節點增加到tree中。之後呼叫tree的refresh\_tree function，也就是演算法的backpropagation階段。最後才執行Selection，雖然是為了配合Angr的設計，但在演算法上步驟的調整並不影響計算，在這個階段會呼叫tree的select\_node function幫我們找出最好的那個節點。
+
+\begin{figure}[htbp]
+\center
+\includegraphics[]{figures/postStep.png}
+\caption{MCTS of post step in Angr \label{figPostStep}}
+\end{figure}
+
+
+
 \chapter{Result and Evaluation}
 
 \section{Environment}
@@ -324,16 +397,16 @@ gif2png      & 2.5.8   \\ \bottomrule
 \section{演算法與其他方法的比較}
 
 % 3k step, BFS, DFS, MCTS
-為了比較不同方法間的效率好壞，我們給定一個資源限制：程式最多只能使用symbolic execution engine來step 3000次，對時間和記憶體用量皆未限制。Table \ref{testMethod}是在此限制下MCTS和DFS、BFS比較的結果。其中數量為前一節所述的程式碼區塊數量，時間為該次實驗的執行時間(秒)，效率則是區塊數量除以時間後得到每秒會增加的平均值。單以區塊數量平均值來看，MCTS勝過其他兩種方法，雖然不同方法在不同程式上各有需要耗費較多時間的狀況，但平均來說MCTS的效率仍然高於其他兩種方法。
+為了比較不同方法間的效率好壞，我們給定一個資源限制：程式最多只能使用symbolic execution engine來step 3000次，對時間和記憶體用量皆未限制。Table \ref{testMethod}是在此限制下MCTS和DFS、BFS比較的結果。其中數量為前一節所述的程式碼區塊數量，時間為該次實驗的執行時間(秒)，效率則是區塊數量除以時間後得到每秒會增加的平均值。
 
 \begin{table}[htbp]
 \ra{1.3}
 \centering
-\caption{不同方法的效率比較}
+\caption{Comparison of the efficiency with different strategies}
 \label{testMethod}
 \begin{tabular}{@{}llllllllllll@{}} \toprule
              & \multicolumn{3}{c}{MCTS} & \phantom{abc} & \multicolumn{3}{c}{DFS} & \phantom{abc} & \multicolumn{3}{c}{BFS} \\ \cmidrule{2-4} \cmidrule{6-8} \cmidrule{10-12}
-program      & 數量   & 時間   & 效率   & & 數量   & 時間   & 效率   & & 數量    & 時間   & 效率      \\ \midrule
+program      & \#   & time(s)   & eft   & & \#   & time(s)   & eft   & & \#    & time(s)   & eft      \\ \midrule
 cpp-markdown & 566    & 272.07 & 2.08 & & 529    & 306.27& 1.73  & & 478     & 318.16 & 1.50   \\
 cp           & 388    & 3732.45& 0.10 & & 218    &2340.34& 0.09  & & 174     & 326.38 & 0.53   \\
 echo         &  84    & 164.90 & 0.51 & &  76    & 283.49& 0.27  & &  83     & 126.61 & 0.66   \\
@@ -344,16 +417,57 @@ mkdir        & 320    & 275.96 & 1.16 & &  82    & 142.86& 0.57  & & 119     & 1
 ps           &  99    & 682.35 & 0.15 & & 185    & 176.52& 1.05  & & 109     &1083.84 & 0.10   \\
 readelf      & 288    & 870.36 & 0.33 & & 393    & 913.68& 0.43  & & 156     &1179.49 & 0.13   \\
 touch        & 302    & 331.78 & 0.91 & & 213    &1665.38& 0.13  & & 124     & 194.40 & 0.64   \\ \hline
-平均          & 495    &1366.52 & 1.27 & & 366    & 1662.7& 0.89  & & 275     & 1358.99 & 0.81 \\
-標準差        & 718    &2174.55 & 1.88 & & 539    & 2488.82& 1.35 & & 407     & 2095.99 & 1.23 \\ \bottomrule
+avg.         & 272    & 751.59 & 0.70 & & 201.1  & 914.49& 0.49  & & 151.5   & 747.44 & 0.45   \\
+SD           & 148.51 &1020.75 & 0.55 & & 145.99 & 809.66& 0.50  & & 114.97  & 847.74 & 0.42   \\ \bottomrule
 % sum          & 2720   & 7515.88& 6.96 & & 2011   &9144.86& 4.90  & & 1515    &7474.42 & 4.50   \\ \bottomrule
+\end{tabular}
+\end{table}
+
+為了方便比較我們將數值繪製成折線圖，如Figure \ref{figCoverageSmall}，可以看到MCTS在大部分的實驗都是勝出的，只有兩隻程式的數值較差。接著比較其效率，結果如Figure \ref{figEffSmall}，除了原本的兩隻程式外，還有兩隻程式遜於BFS，但仍贏過DFS。雖然各有勝負，但從數據的平均值來看，MCTS的效能是比較好的，而標準差也可以看出對實驗結果的不確定性，MCTS相對於其他兩個方法並沒有極大的差異。
+
+\begin{figure}[htbp]
+\center
+\includegraphics[width=\textwidth]{figures/small_block.png}
+\caption{block coverage in small test \label{figCoverageSmall}}
+\end{figure}
+
+\begin{figure}[htbp]
+\center
+\includegraphics[width=\textwidth]{figures/small_eff.png}
+\caption{efficienct in small test \label{figEffSmall}}
+\end{figure}
+
+\section{MCTS的評估函式效能測量}
+
+在演算法中的Selection階段會遞迴性的選擇最好的子節點直到發現一個可展開的節點，而Simulation階段也會根據先前展開的節點來模擬評估其價值，這兩個階段在演算法中位居引導演算法的重要角色，因此我們想要知道如果沒有這兩個階段之下，演算法的效能如何，下面比較的對象是將Selection從選擇BestChild改為隨機選擇一個子節點，結果如Table \ref{testRandomSeletion}所示，結果只有程式echo和ps略輸於Random，但差距非常的小，只有3.5\%，單從區塊涵蓋數量來看，平均有35\%的成長，而Random甚至略遜於DFS的平均值，除上執行時間後，效率更加糟糕，這有可能是因為symbolic execution本身的優化技巧在隨機選擇後沒有辦法發揮效果，以至於平均執行時間增加到2.7倍。
+
+\begin{table}[htbp]
+\ra{1.3}
+\centering
+\caption{Comparison of the efficiency with random selection}
+\label{testRandomSeletion}
+\begin{tabular}{@{}lllllllll@{}} \toprule
+             & \multicolumn{3}{c}{MCTS} & \phantom{abc} & \multicolumn{3}{c}{Random} \\ \cmidrule{2-4} \cmidrule{6-8}
+program      & \#   & time(s)   & eft   & & \#   & time(s) & eft  \\ \midrule
+cpp-markdown & 566    & 272.07 & 2.08 & & 479    &2013.28& 0.24     \\
+cp           & 388    & 3732.45& 0.10 & & 265    &2038.27& 0.13     \\
+echo         &  84    & 164.90 & 0.51 & &  87    & 575.15& 0.15     \\
+gif2png      & 105    & 192.66 & 0.55 & & 101    &1116.26& 0.09     \\ 
+hostname     & 175    & 277.80 & 0.63 & &  94    & 826.82& 0.11     \\
+ls           & 393    & 715.55 & 0.55 & & 168    &3374.23& 0.05     \\
+mkdir        & 320    & 275.96 & 1.16 & & 187    &1154.84& 0.16     \\
+ps           &  99    & 682.35 & 0.15 & & 103    &1631   & 0.06     \\
+readelf      & 288    & 870.36 & 0.33 & & 263    &6599.76& 0.03     \\
+touch        & 302    & 331.78 & 0.91 & & 246    &1025.58& 0.24     \\ \hline
+avg.         & 272    & 751.59 & 0.70 & & 199.3  &2035.52& 0.13     \\
+SD           & 148.51 &1020.75 & 0.55 & & 115.13 &1703.61& 0.07     \\ \bottomrule
 \end{tabular}
 \end{table}
 
 \section{長時間執行的效率比較}
 
 % 24hr + 20G limit (usually 50k~100k step), BFS, DFS, MCTS
-經小規模實驗得到MCTS較佳的結果後，我們用較大規模的方法來實驗，前項實驗的執行時間大約為15分鐘上下，且記憶體用量幾乎不會超過2 GB；因此在這個實驗我們改以24小時的時間限制和20 GB的記憶體用量限制，而不限制其在symbolic execution engine的step次數，來觀察在有限的記憶體用量下，我們的方法相較於傳統的方法能有多少幅度的效率成長。
+經小規模實驗得到MCTS較佳的結果後，我們用較大規模的方法來實驗，前項實驗的執行時間大約為13分鐘上下，且記憶體用量幾乎不會超過2 GB；因此在這個實驗我們改以24小時的時間限制和20 GB的記憶體用量限制，而不限制其在symbolic execution engine的step次數，來觀察在有限的記憶體用量下，我們的方法相較於傳統的方法能有多少幅度的效率成長。
 
 %%%%%%%%%%%%%%%%%
 % cpp-markdown
@@ -923,7 +1037,13 @@ Figure \ref{test_cp}、\ref{test_gif2png}、\ref{test_hostname}、\ref{test_ls}�
 
 在\cite{sharma2012critical}\cite{schwartz2010all}中對symbolic execution所做的概述，提及了幾項目前的挑戰，其中一個重要的問題就是路徑選擇問題(path selection problem)，當路徑爆炸問題已難以避免其發生，我們希望藉由有效的路徑選擇在資源限制內做最高效率的探索；目前已經提出的幾種解決方式如：KLEE\cite{cadar2008klee}中提出的深度優先搜尋法來優先探索最深的路徑，但很有可能被困在無限迴圈而進行了無效的探索。\cite{sen2007concolic}提出的concolic testing，除了以symbolic execution執行，也會使用具體的輸入真正執行程式來蒐集執行路徑，\cite{sen2005cute}就使用了這種作法。而KLEE\cite{cadar2008klee}也支援隨機挑選路徑的方式來避免進行了無效的探索。
 
-另外如driller\cite{stephens2016driller}結合了AFL\cite{AFL}的fuzzing技術，它將使用者輸入分類為需要特定值的特定輸入(specific input)和可接受各種數值的通用輸入(general input)，並透過symbolic execution engine和fuzzing engine的切換來解決各自不擅長的部分。而s2e\cite{chipounov2012s2e}則是利用選擇性的symbolic execution，避免連同其他函式庫也一起分析，造成路徑數量大量增長。另外也有針對路徑成長，檢查其可滿足性(satisfiability)並做動態剪枝的方法\cite{PathPruning}。
+近期有加入統計和機率計算來改善Path selection problem的方法，如\cite{probabilistic}：傳統的symbolic execution只計算路徑的可滿足性(satisfiability)，而無法得知路徑或程式碼的執行機率，它透過分析程式輸入計算路徑條件的解數量(model counting)，進而計算出路徑的執行機率，讓使用者檢查計算出的機率和預想中的行為是否相同。而\cite{StatisticalSymbolicExecution}則是利用隨機取樣技術Bayersian estimation和hypothesis testing於路徑選擇上，使symbolic execution會選擇相同性較低的路徑。\cite{FitnessGuided}則是設計了fitness function藉由路徑和分支的特徵給予價值高低，來引導symbolic execution在每次選擇路徑時的參考。
+
+另外如driller\cite{stephens2016driller}結合了AFL\cite{AFL}的fuzzing技術，它將使用者輸入分類為需要特定值的特定輸入(specific input)和可接受各種數值的通用輸入(general input)，並透過symbolic execution engine和fuzzing engine的切換來解決各自不擅長的部分。而s2e\cite{chipounov2012s2e}則是利用選擇性的symbolic execution，避免連同其他函式庫也一起分析，造成路徑數量大量增長。另外也有針對路徑成長，檢查satisfiability並做動態剪枝的方法\cite{PathPruning}。
+
+\section{Search-based test generation}
+
+search-based test generation是使用基因演算法來產生測試資料，以提高測試對象的code coverage，
 
 \section{MCTS and Game AI}
 
@@ -931,13 +1051,27 @@ Monte Carlo方法是一種隨機取樣的方法，在1987年由Bruce Abramson提
 
 由於遊戲盤面的推估複雜度與其盤面可呈現的狀態成正比，當一個盤面有數百種可能下法時，人類通常只考慮其中幾種並做深入的考量，相對於電腦而言如果全部展開盤面並計算顯得十分緩慢，因而程式設計師開始利用各種方法嘗試縮小真正需要的搜尋的那幾種可能；由程式設計師針對不同遊戲寫不同規則來應對，是一件不可能的事情，所以無論是MCTS或機器學習，皆在於讓電腦能自己掌握哪些情況是必須要計算，哪些情況則沒有必要的。
 
-\chapter{Conclusion}
+\section{MCTS in AlphaGo}
 
-我們提出的演算法在實驗中證實，在相同的時間限制或資源限制下，比起傳統的DFS和BFS策略能有效的走訪更多程式碼，同樣在沒有修改任何程式或資料的情況下，我們額外使用一棵樹來記錄路徑的資訊和親子關係，就算沒有使用MCTS的方法，紀錄路徑間的親子關係也有可能用來作為其他演算法上的cut或pruning使用；唯一被修改的是路徑進入symbolic execution engine計算的順序，這使我們的方法與其他技術如concolic testing\cite{sen2007concolic}, veritesting\cite{Veritesting}, driller\cite{stephens2016driller}整合的難度有可能是變低的。
+AlphaGo實作的搜尋演算法為aynchronous policy and value MCTS algorithm(APV-MCTS)，並在演算法的不同階段整合類神經網路來提升效能。在Selection階段使用的是polynomial upper confidence trees 演算法 (PUCT，UCT的變形)，來選擇要計算的子樹節點。由於圍棋中幾乎所有盤面都是expandable的，所以AlphaGo設計了一個閥值，當節點被走訪超過某個數值時，才會產生新的子節點；當新的節點要被產生時，會先透過設計好的\textit{tree policy}提供幾個較有可能的選擇，再由SL policy network和value network來決定位置。Evaluaion階段則是由value network給出盤面價值，同時也以fast rollout policy把盤面下完，計算出贏家，這兩個結果來共同決定最終的盤面價值。Backup階段則將計算出的盤面價值往上更新這個子樹。
+
+從AlphaGo的實驗結果可以看出，演算法每個環節的參數都可能有影響，如SL policy network和value network數值的混合比例、Expansion時的threshold、Selection時的Exploration constant。value network的訓練也發現使用RL policy network來自我對奕的準確性大於使用SL policy network，但Expansion時反而使用SL的勝率會贏過RL。在Evaluation時沒有使用SL或RL policy network，而是使用準確度較低的rollout policy，雖然相較於SL，準確度從55.7\%下降到24.2\%，運算速度卻能從2毫秒提升3微秒，差距有1500倍；儘管使用了準確率較低的policy，實驗卻發現整體上是比較好的，顯見AlphaGo在simulation上也有其tradeoff的考量存在。
+
+\chapter{Conclusions}
+
+\section{conclusion}
+
+我們提出的演算法在實驗中證實，在相同的時間限制或資源限制下，比起傳統的DFS和BFS策略能有效的走訪更多程式碼，同樣在沒有修改任何程式或資料的情況下，我們額外使用一棵樹來記錄路徑的資訊和親子關係，就算沒有使用MCTS的方法，紀錄路徑間的親子關係也有可能用來作為其他演算法上的cut或pruning使用；唯一被修改的是路徑進入symbolic execution engine計算的順序，這使我們的方法與其他技術如concolic testing\cite{sen2007concolic}, veritesting\cite{Veritesting}, driller\cite{stephens2016driller}整合上相較容易。
 
 但我們的演算法仍然可能會有以下的問題，第一是路徑爆炸問題，如果我們完全不修剪路徑，它仍然可能發生，只能盡力在發生前挑選價值高的路徑進行搜索；如果借助我們建立的樹來進行修剪，雖然可以延緩甚至避免這個問題發生，但有些路徑可能就不會被探索到。第二是symbolic execution既有的問題，當它遇到大量迴圈如strcmp函式，會產生大量路徑，而且很難找到能夠離開的路徑，我們的演算法也會遇到這個問題，在部分的實驗中顯示了仍然有可能被困住而沒有繼續增加覆蓋率，這只能依靠結合其他技術來獲得解決。最後是CFG的問題，當靜態分析發生錯誤，如產生出的CFG有部分不正確，或是被混淆代碼(obfuscated code)等等可能的因素，那演算法對於模擬計算出的期望值就可能沒有效果，這時就只能依靠路徑的已執行程式碼區塊數量來判斷，演算法的效果會變差。
 
-目前的演算法使用的是較輕量級的價值評估函式，並沒有運用太多的domain knowledge，如果能結合對敏感函式或危險行為的偵測，在漏洞尋找上相信能有更大的成效；而我們實作採用的框架屬於較易於開發但小型的平台，如能移植到較大且完整的系統如s2e中，應能支援更大且複雜的程式。
+\section{further work}
+
+在這篇論文中我們提出了以MCTS的角度來作為symbolic execution的search strategy，以往的作法多是將路徑視為集合，會在所有的已知路徑中進行選擇，但我們認為以樹的角度來嘗試解決這個問題可能會有更好的結果；因此我們建立了一棵樹用來記錄所有路徑間的親子關係，就可以嘗試套用tree optimization的做法來套用到我們的架構上。
+
+從AlphaGo中可以看出，要結合機器學習的方法，MCTS是一個很好的嘗試方向，藉由一個預先設計好的tree search procedure來進行搜尋，並從中改善它，藉由引導其方向可能有更好的效能。在我們的架構中，Selection只評估了能增加多少覆蓋率和路徑深度，但已有一些研究藉由計算路徑的執行機率或fitness function來讓選擇更加精準，目前的演算法使用的是較輕量級的價值評估函式，並沒有運用太多的domain knowledge，如果能結合對敏感函式或危險行為的偵測或前述的方法，在漏洞尋找上相信能有更大的成效。Simulation目前使用了CFG來判斷路徑接下來的執行流程，但並沒有根據路徑目前的狀態和satisfiability進行選擇，如果用其他的作法如model checking甚至concrete execution或許可以在模擬上更加精準，但相對的也會花費更多時間。
+
+我們實作採用的框架屬於較易於開發但小型的平台，如能移植到較大且完整的系統如s2e中，應能支援更大且複雜的程式。
 
 \newpage
 
