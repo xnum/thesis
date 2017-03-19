@@ -241,7 +241,7 @@ Figure \ref{figTREE}為範例程式碼Algorithm 1在symbolic execution計算過�
       \State $p$ $\leftarrow$ TreePolicy($T$)
       \State $B \leftarrow B \bigcup p$
       \State $S$ $\leftarrow$ step($p$)
-      \For{each path $p_c \in S$}
+      \For{Each path $p_c \in S$}
       	\State $V \leftarrow$ DefaultPolicy($p_c$)
         \State $Q(p_c) \leftarrow \alpha \frac{|V-B|}{N} + \beta|p_c|$
         \State add a new child $p_c$ to $p$
@@ -311,63 +311,64 @@ Algorithm 3是Algorithm 2中所提及的函式實作部分。\textit{Tree Policy
 
 \chapter{Implementation}
 
-\section{Angr's architecture}
+\section{Introduction to Angr}
 
-Angr\cite{angr} 是一個支援多種架構的程式分析平台，主要以python撰寫，能夠執行如dynamic symbolic execution和多種靜態分析方法。這個平台可以自動替使用者完成一些工作，如：讀取並載入程式binary到分析平台中、將程式binary轉換成intermediate representation (IR)，程式靜態分析，如：相依性分析、control flow graph、data flow graph。Angr主要擁有以下幾個元件：binary loader可以載入不同平台的程式、Intermediate representation讓不同格式的程式都能使用同一套演算法或工具、Solver Engine以計算出symbolic execution中的變數值、Program states以模擬機器的狀態，如暫存器目前的值、Program paths以記錄程式執行的路徑作為分析用、symbolic execution和program analysis。
+Angr\cite{angr} 是一個支援多種硬軟體架構的程式分析平台，主要以python撰寫，能夠執行dynamic symbolic execution和多種靜態分析方法。這個平台可以自動替使用者完成一些工作，如：讀取並載入程式binary到分析平台中、將程式binary轉換成intermediate representation (IR)。程式靜態分析，如：相依性分析、control flow graph、data flow graph。
 
-要使用Angr進行程式分析必須自行撰寫python script來呼叫相關功能，如Figure \ref{figScript}為使用Angr執行symbolic execution的範例script；與作業系統執行process的過程類似，首先執行Line 22，必須找到程式的binary位置並傳給Angr進行初始化，由於程式大多會連結多個函式庫，如果將其視為程式的一部份一同載入會使得載入時間變得很長，因此在Line 14選擇關閉一同載入的功能，直到程式執行到該地方了再去載入函式庫；接著必須使用Angr內的solver engine：claripy來設定symbolic variables，以程式gif2png為例，執行的時候只需要給他兩個命令列選項，而第二個選項為圖片位置，所以我們將第一個選項設為symbolic variable，使用claripy的BVS (symbolic bitvector)物件，並給它一個名稱和初始值；再來的Line 16則是將設定好的程式啟動並執行到某個狀態，當程式要執行時除了讀取程式binary外還要設定它的記憶體區段、初始化數值、環境變數等等資訊，而我們所寫的entry是指這些資訊都設定完成時，程式剛要從程式進入點開始執行的狀態；另外我們還可以給它一些其它設定，如命令列參數傳入了剛剛宣告的symbolic variable，還有檔案的名稱，也可以設定執行時要開啟或關閉哪些選項，在這邊關閉了LAZY\_SOLVES功能，讓Angr會自動移除unsatisfiable的路徑；這些前置工作都完成後才獲得預備要進行symbolic execution的初始化狀態，接著在Line 18使用Angr的path\_group功能來代替我們管理symbolic execution的繁瑣設定；path\_group代表的是一群path的集合，當symbolic execution在執行時會不斷的增長出新的path，而path\_group可以將path進行分類，如：errored、unconstrainted、pruned、deadended、unsatisfiable等等，此外還能過濾、合併、複製路徑，或是設定symbolic execution要停止的條件，是一個功能相當強大的class。最後利用path\_group的run function就可以幫我們執行symbolic execution。
+Angr主要擁有以下幾個元件：binary loader可以載入不同平台的程式、Intermediate representation讓不同格式的程式都能使用同一套演算法或工具、Solver Engine以計算出symbolic execution中的變數值、Program states以模擬機器的狀態，如暫存器目前的值、Program paths以記錄程式執行的路徑作為分析用、symbolic execution和program analysis。
+
+以symbolic execution在Angr上的執行過程為例，流程如Figure \ref{figAngrScript}，將欲測試程式使用binary loader轉換為IR，連同其執行設定如符號變數、具體輸入值、模擬參數傳給Factory初始化出path group物件來管理symbolic execution的執行動作；在初始化path group時還可以額外開啟不同的Exploration Technique plug-in來影響path group的行為。
 
 \begin{figure}[htbp]
 \center
 \includegraphics[width=\textwidth]{figures/script.png}
-\caption{Example script to run symbolic execution in Angr \label{figScript}}
+\caption{initalized symbolic execution in Angr \label{figAngrScript}}
 \end{figure}
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Exploration techniques}
 
-前一節提到了path\_group，在它內部也實作了一套方法可以讓使用者撰寫不同的exploration technique來應用到symbolic execution上，在提到exploration technique前必須先提及的是path\_group內執行symbolic execution的方法，我們呼叫的方法是run，其內部呼叫了step使其進行無數次迴圈，如Figure \ref{figAngrStep}為部分原始碼，run會將n設為一個極大值；而step真正呼叫的是\_one\_step function，執行後檢查是否還需要繼續執行，不斷進行迴圈。
-
-\begin{figure}[htbp]
-\center
-\includegraphics[]{figures/angrStep.png}
-\caption{partial code of step in Angr \label{figAngrStep}}
-\end{figure}
-
-\_one\_step function內才是真正會呼叫exploration techniques提供的方法之處，在啟用每個exploration technique時，Angr會將它們提供的四種方法：step、step\_path、filter、complete給加入hook function內，如Figure \ref{figAngrOneStep}中的變數\_hook\_step為一個陣列，裡面存放不同exploration techniques提供的step function，首先它會將一個step function取出，並執行該step function，而exploration technique提供的step function需要再呼叫一次step，這時如果還有其他hook的step就會取出來繼續執行，否則就會執行原生的step function，如Figure \ref{figExptech}為Exploration technique DFS的step function實作，Line 16先呼叫step後，才執行其對路徑的重新選擇。我們可以將exploration technique的step分為兩個部分，一為step前處理，一為step後處理，論文中的MCTS演算法實作完全是環繞於這兩個區塊而成。
-
-\begin{figure}[htbp]
-\center
-\includegraphics[]{figures/oneStep.png}
-\caption{partial code of one step in Angr \label{figAngrOneStep}}
-\end{figure}
+在path group中可以插入plug-in，讓使用者撰寫不同的exploration technique來應用到symbolic execution上。Angr內已經內建數個plug-in如looplimiter、DFS...。Figure \ref{figExptech}為其DFS模組的實作方法，可以看到作法為先呼叫原本的step function後，在目前的path數量大於1條時，縮減到只剩1條，其餘的path則儲存起來，而path數量為0時，會從儲存起來的path中挑出最深的path。實作上我們參考了這個方法的設計，改為MCTS的路徑探索方法。
 
 \begin{figure}[htbp]
 \center
 \includegraphics[]{figures/exptech.png}
-\caption{partial code of exploration technique(DFS) in Angr \label{figExptech}}
+\caption{exploration technique(DFS) in Angr \label{figExptech}}
 \end{figure}
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Applied MCTS into Angr}
 
-Figure \ref{figPreStep}是MCTS在step前所作的處理，對於接下來要用symbolic execution計算的路徑，會先取出該路徑的歷史路徑位址集合，並更新到目前總共執行過的位址集合中，這個集合在之後會用來判斷路徑是不是有可能增加覆蓋率，由於每次都只會有一條路徑在stash中準備要進行計算，所以我們只取出一條即可。
+以Angr的Exploration technique設計來說，分為step前和step後的處理，將我們的演算法做順序上的修改後便可套用進這個架構中。Algorithm 4為我們定義的前處理函式，對應到Algorithm 2 第6行更新集合B的步驟，$stashes[ACTIVE]$是會進行Symbolic execution的Path集合。接著Algorithm 2 第7行的step對應的即是Angr原本的step函式。
 
-\begin{figure}[htbp]
-\center
-\includegraphics[]{figures/preStep.png}
-\caption{MCTS of pre step in Angr \label{figPreStep}}
-\end{figure}
+\begin{algorithm}[htbp]
+  \caption{pre-process}
+  \begin{algorithmic}[1]
+  	\Function{pre-step}{Path Group $PG$}
+    	\State update visited blockes set $B$ by $PG.stashes[ACTIVE]$
+    \EndFunction
+  \end{algorithmic}
+\end{algorithm}
 
-呼叫完原本的step function後，就等同於演算法中的Expansion階段已經完成了，之後會進行MCTS的計算處理，如Figure \ref{figPostStep}，現在stash中的路徑都是剛剛進去計算的路徑的子節點，我們會將每一條都取出來，並進行Simulation，得到平均可增加覆蓋率後，將子節點增加到tree中。之後呼叫tree的refresh\_tree function，也就是演算法的backpropagation階段。最後才執行Selection，雖然是為了配合Angr的設計，但在演算法上步驟的調整並不影響計算，在這個階段會呼叫tree的select\_node function幫我們找出最好的那個節點。
+Algorithm 5則是進行完step後的處理，此時$stashes[ACTIVE]$可能有一到多條Path，首先將Path全部移出，並對每條路徑經過模擬後(對應到Algorithm 3的Default Policy)，計算出其價值，最後將Path新增到Tree中，更新樹的數值。但現在$stashes[ACTIVE]$為一個空集合，我們呼叫SelectNode(對應到Algorithm 3的Tree Policy)挑出下一輪應該被計算的Path $p_n$，將$p_n$放回$stashes[ACTIVE]$中，完成整個操作。
 
-\begin{figure}[htbp]
-\center
-\includegraphics[]{figures/postStep.png}
-\caption{MCTS of post step in Angr \label{figPostStep}}
-\end{figure}
-
-
+\begin{algorithm}[htbp]
+  \caption{post-process}
+  \begin{algorithmic}[1]
+  	\Function{post-step}{Path Group $PG$}
+    	\State move path in $PG.stashes[ACTIVE]$ to $PG.stashes[INCOMING]$
+        \For{Each Path $p_c$ in $PG.stashes[INCOMING]$}
+        	\State update set $V$ with visited blocks in $p_c$
+            \State update set $V$ with simulated results in $p_c$
+            \State calculate value $Q$ of $p_c$
+            \State Add child ($p_c$, $Q$) to Tree $T$ 
+        \EndFor
+        \State $Backpropagation(T)$
+        \State path $p_n \leftarrow SelectNode(T)$
+        \State put $p_n$ into $PG.stashes[ACTIVE]$
+    \EndFunction
+  \end{algorithmic}
+\end{algorithm}
 
 \chapter{Result and Evaluation}
 
@@ -379,18 +380,18 @@ Figure \ref{figPreStep}是MCTS在step前所作的處理，對於接下來要用s
 \begin{table*}[htbp]\centering
 \caption{Target Program's name and version}
 \label{binarys}
-\begin{tabular}{@{}ll@{}}\toprule
-program name & version \\ \midrule
-cp           & 8.25    \\ 
-echo         & 8.25    \\ 
-hostname     & 3.16    \\ 
-ls           & 8.25    \\ 
-mkdir        & 8.25    \\ 
-ps           & 3.3.10  \\ 
-readelf      & 2.26.1  \\ 
-touch        & 8.25    \\ 
-cpp-markdown & 1.00    \\ 
-gif2png      & 2.5.8   \\ \bottomrule
+\begin{tabular}{@{}lll@{}}\toprule
+program name & version & file size\\ \midrule
+cp           & 8.25    & 151k \\ 
+echo         & 8.25    & 31k  \\ 
+hostname     & 3.16    & 14k  \\ 
+ls           & 8.25    & 126k \\ 
+mkdir        & 8.25    & 76k  \\ 
+ps           & 3.3.10  & 97k  \\ 
+readelf      & 2.26.1  & 485k \\ 
+touch        & 8.25    & 64k \\ 
+cpp-markdown & 1.00    & 767k \\ 
+gif2png      & 2.5.8   & 32k  \\ \bottomrule
 \end{tabular}
 \end{table*}
 
@@ -418,7 +419,7 @@ ps           &  99    & 682.35 & 0.15 & & 185    & 176.52& 1.05  & & 109     &10
 readelf      & 288    & 870.36 & 0.33 & & 393    & 913.68& 0.43  & & 156     &1179.49 & 0.13   \\
 touch        & 302    & 331.78 & 0.91 & & 213    &1665.38& 0.13  & & 124     & 194.40 & 0.64   \\ \hline
 avg.         & 272    & 751.59 & 0.70 & & 201.1  & 914.49& 0.49  & & 151.5   & 747.44 & 0.45   \\
-SD           & 148.51 &1020.75 & 0.55 & & 145.99 & 809.66& 0.50  & & 114.97  & 847.74 & 0.42   \\ \bottomrule
+S.D.         & 156.55 &1075.96 & 0.58 & & 153.90 & 853.46& 0.53  & & 121.19  & 893.60 & 0.42   \\ \bottomrule
 % sum          & 2720   & 7515.88& 6.96 & & 2011   &9144.86& 4.90  & & 1515    &7474.42 & 4.50   \\ \bottomrule
 \end{tabular}
 \end{table}
@@ -460,7 +461,7 @@ ps           &  99    & 682.35 & 0.15 & & 103    &1631   & 0.06     \\
 readelf      & 288    & 870.36 & 0.33 & & 263    &6599.76& 0.03     \\
 touch        & 302    & 331.78 & 0.91 & & 246    &1025.58& 0.24     \\ \hline
 avg.         & 272    & 751.59 & 0.70 & & 199.3  &2035.52& 0.13     \\
-SD           & 148.51 &1020.75 & 0.55 & & 115.13 &1703.61& 0.07     \\ \bottomrule
+S.D.         & 156.55 &1075.96 & 0.58 & & 121.36 &1795.76& 0.07     \\ \bottomrule
 \end{tabular}
 \end{table}
 
@@ -468,6 +469,29 @@ SD           & 148.51 &1020.75 & 0.55 & & 115.13 &1703.61& 0.07     \\ \bottomru
 
 % 24hr + 20G limit (usually 50k~100k step), BFS, DFS, MCTS
 經小規模實驗得到MCTS較佳的結果後，我們用較大規模的方法來實驗，前項實驗的執行時間大約為13分鐘上下，且記憶體用量幾乎不會超過2 GB；因此在這個實驗我們改以24小時的時間限制和20 GB的記憶體用量限制，而不限制其在symbolic execution engine的step次數，來觀察在有限的記憶體用量下，我們的方法相較於傳統的方法能有多少幅度的效率成長。
+
+\begin{table}[htbp]
+\ra{1.3}
+\centering
+\caption{Comparison with different strategies in large experiment}
+\label{large_sum}
+\begin{tabular}{@{}llllllllll@{}} \toprule
+             & \multicolumn{2}{c}{BFS} & \phantom{abc} & \multicolumn{2}{c}{DFS} & \phantom{abc} & \multicolumn{2}{c}{MCTS}  &  \\ \cmidrule{2-3} \cmidrule{5-6} \cmidrule{8-9}
+Program      & times & blocks & & times & blocks & & times & blocks & total blocks  \\ \midrule
+cpp-mark~    & 102   & 661(6\%)    & &  110  &  588(5.3\%)   & &  143  & 606(5.5\%)    & 10958         \\
+cp           &  20   & 226(2.8\%)    & &   64  &  222(2.8\%)   & &   17  & 581(7.3\%)    &  7899         \\ 
+echo         &  21   & 129(11.4\%)    & &   94  &   87(7.7\%)   & &   26  & 103(9.1\%)    &  1128         \\
+gif2png      &  24   &  74(6.5\%)    & &   64  &   64(5.6\%)   & &   79  & 107(9.5\%)    &  1126         \\
+hostname     &  25   &  65(13.9\%)    & &  119  &   61(13.1\%)   & &   65  & 184(39.5\%)    &   465         \\
+ls           &  12   & 209(3.6\%)    & &   78  &  198(3.4\%)   & &   21  & 652(11.3\%)    &  5766         \\
+mkdir        &  34   & 171(4\%)    & &  156  &   82(1.9\%)   & &   35  & 572(13.6\%)    &  4205         \\
+ps           &  11   & 131(37.9\%)    & &   91  &  185(5.3\%)   & &   15  & 431(12.4\%)    &  3450         \\
+readelf      &  22   & 205(1.1\%)    & &   35  &  466(2.5\%)   & &   90  & 652(3.5\%)    & 18304         \\
+touch        &  24   & 182(7.3\%)    & &   65  &  222(8.9\%)   & &  139  & 340(13.7\%)    &  2477         \\ \bottomrule
+\end{tabular}
+\end{table}
+
+Table \ref{large_sum}為此條件下實驗之結果，times單位為每千次的step次數。BFS除了cp外所有的times都是最低的，如我們所知的BFS在記憶體使用效率上最低，有七隻程式的結果都顯示BFS執行的程式碼區塊數量較DFS為多，也證實了我們的推測：在執行上因為可能有接近無限的狀態空間，所以DFS往固定方向搜尋時的效率在最終可能較差，而MCTS一共有八隻程式贏過DFS和BFS，其中更是全部贏過DFS。而從times來看，DFS執行step次數有6隻程式都是最多的，但結果卻不一定最好，MCTS執行step的次數雖然沒有特別優異，在執行過的程式碼區塊數量上卻通常比較多。下圖則為每隻程式執行結果的詳細狀況。
 
 %%%%%%%%%%%%%%%%%
 % cpp-markdown
